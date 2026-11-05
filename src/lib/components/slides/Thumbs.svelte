@@ -47,7 +47,7 @@
 <nav class="no-print flex h-full w-52 shrink-0 flex-col border-r border-line bg-surface" aria-label={t().slides.thumbnails}>
 	<!-- Arrow keys move between slides; each item has its own button. -->
 	<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-	<ol class="flex-1 space-y-2 overflow-y-auto p-2 outline-none" tabindex="0" onkeydown={key}>
+	<ol class="flex-1 space-y-2 overflow-x-hidden overflow-y-auto p-2 outline-none [scrollbar-width:thin]" tabindex="0" onkeydown={key}>
 		{#each deck.content.slides as s, i (s.id)}
 			<li
 				data-thumb={i}
