@@ -1,1 +1,0 @@
-import{t as e}from"./CfqhXIep.js";import{o as t,u as n}from"./DySKEsAw.js";import{f as r,o as i}from"./ColqNDWN.js";import{t as a}from"./SGHYeTsh.js";async function o(){return a(`doc`,n().library.untitledDoc,e(t.locale))}async function s(){return a(`sheet`,n().library.untitledSheet,r(i(n().sheet.sheetName(1))))}export{s as n,o as t};

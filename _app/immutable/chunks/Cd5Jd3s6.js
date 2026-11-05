@@ -1,0 +1,1 @@
+var e=`/mai-docs/`.replace(/\/$/,``);function t(t){return!t.startsWith(`/`)||!e||t===e||t.startsWith(`${e}/`)?t:e+t}function n(t){return e&&t.startsWith(e)?t.slice(e.length)||`/`:t}export{n,t as r,e as t};

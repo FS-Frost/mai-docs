@@ -17,7 +17,8 @@
 	],
 	"shortcuts": [
 		{ "name": "New document / Nuevo documento", "short_name": "Doc", "url": "new/doc", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
-		{ "name": "New spreadsheet / Nueva hoja", "short_name": "Sheet", "url": "new/sheet", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+		{ "name": "New spreadsheet / Nueva hoja", "short_name": "Sheet", "url": "new/sheet", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+		{ "name": "New presentation / Nueva presentación", "short_name": "Slides", "url": "new/slides", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
 	],
 	"file_handlers": [
 		{
