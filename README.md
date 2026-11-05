@@ -11,6 +11,8 @@ Lightweight **documents** and **spreadsheets** editors that run entirely in the 
 - Biblioteca local con autoguardado (IndexedDB), papelera y copia de seguridad en `.zip`. En Chromium también abre y guarda archivos del disco (Ctrl+S escribe sobre el `.docx`/`.xlsx` original).
 - Interfaz en español o inglés según el idioma del sistema, con selector manual. Tema claro, oscuro o del sistema.
 
+Navegadores soportados: Chrome, Edge y Firefox (Safari no se soporta).
+
 Limitaciones: sin colaboración en tiempo real, sin paginación tipo Word, sin gráficos en hojas; al importar `.docx` se pierden encabezados/pies de página y estilos complejos; al importar `.xlsx` se pierden imágenes, gráficos, validaciones y formato condicional.
 
 ## Stack
