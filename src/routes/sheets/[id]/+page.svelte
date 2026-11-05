@@ -7,16 +7,21 @@
 	import SheetToolbar from '#lib/components/sheets/SheetToolbar.svelte';
 	import SheetTabs from '#lib/components/sheets/SheetTabs.svelte';
 	import FilterMenu from '#lib/components/sheets/FilterMenu.svelte';
+	import ChartPanel from '#lib/components/charts/ChartPanel.svelte';
+	import { chartData, resolveRange } from '#lib/sheets/charts.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import Menu from '#lib/components/Menu.svelte';
 	import { Book } from '#lib/sheets/book.svelte.ts';
 	import { SheetView } from '#lib/sheets/view.svelte.ts';
 	import * as A from '#lib/sheets/actions.ts';
 	import { sheetToCSV } from '#lib/sheets/io/csv.ts';
-	import { writeXlsx } from '#lib/sheets/io/xlsx.ts';
-	import type { WorkbookContent } from '#lib/sheets/model.ts';
+	import { writeXlsx, type LoadImage } from '#lib/sheets/io/xlsx.ts';
+	import { officeImage } from '#lib/files/images.ts';
+	import type { CellImage, WorkbookContent } from '#lib/sheets/model.ts';
+	import { promptDialog } from '#lib/client/dialogs.svelte.ts';
 	import { t } from '#lib/i18n/index.svelte.ts';
 	import { createAutosave } from '#lib/storage/autosave.svelte.ts';
+	import { getBlob, pruneBlobs } from '#lib/storage/blobs.ts';
 	import { getHandle, setHandle } from '#lib/storage/handles.ts';
 	import { acquireFileLock, type FileLock } from '#lib/storage/locks.ts';
 	import { getContent, getMeta, renameFile, saveContent, type FileMeta } from '#lib/storage/library.ts';
@@ -34,6 +39,19 @@
 	let handleName = $state<string | null>(null);
 	let ctxMenu = $state<{ x: number; y: number; kind: 'cell' | 'row' | 'col' } | null>(null);
 	let filterMenu = $state<{ col: number; x: number; y: number } | null>(null);
+
+	const editing = $derived.by(() => {
+		if (!view?.editingChart) return null;
+		void view.book.rev;
+		const o = view.book.object(view.sheet.id, view.editingChart);
+		return o?.kind === 'chart' ? { ...o } : null;
+	});
+
+	const loadImage: LoadImage = async (blobId) => {
+		const b = await getBlob(blobId);
+		return b ? officeImage(b) : null;
+	};
+	const xlsxBytes = (v: SheetView) => writeXlsx(v.book.wb, loadImage, (s, r, c) => v.book.text(s, r, c));
 
 	const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -56,12 +74,14 @@
 		const book = new Book(content);
 		book.engine.recalcVolatile();
 		book.onChange = () => autosave.schedule();
-		view = new SheetView(book);
+		view = new SheetView(book, id);
 		view.focusTick++;
 	});
 
 	onDestroy(() => {
 		autosave.destroy();
+		const v = view;
+		if (v && !readonly) void autosave.flush().then(() => pruneBlobs(id, v.book.content()));
 		lock?.release();
 	});
 
@@ -75,7 +95,7 @@
 		try {
 			const blob =
 				kind === 'xlsx'
-					? new Blob([(await writeXlsx(view.book.wb)) as BlobPart], { type: XLSX_MIME })
+					? new Blob([(await xlsxBytes(view)) as BlobPart], { type: XLSX_MIME })
 					: new Blob(['﻿' + sheetToCSV(view.book.active)], { type: 'text/csv;charset=utf-8' });
 			const ext = kind === 'xlsx' ? '.xlsx' : '.csv';
 			const name = kind === 'csv' && view.book.wb.sheets.length > 1 ? `${meta.title} - ${view.book.active.name}` : meta.title;
@@ -101,7 +121,7 @@
 		const h = await getHandle(id);
 		if (h) {
 			try {
-				await writeHandle(h, new Blob([(await writeXlsx(view.book.wb)) as BlobPart], { type: XLSX_MIME }));
+				await writeHandle(h, new Blob([(await xlsxBytes(view)) as BlobPart], { type: XLSX_MIME }));
 				toast.success(t().file.savedToDisk(h.name), { key: 'save' });
 				view.focusTick++;
 				return;
@@ -150,6 +170,13 @@
 		view.focusTick++;
 	}
 
+	const cellImg = (v: SheetView) => v.book.cell(v.sheet, v.active.r, v.active.c)?.img;
+	function setCellImg(v: SheetView, img: CellImage | undefined) {
+		const { r, c } = v.active;
+		const prev = v.book.cell(v.sheet, r, c);
+		v.book.setCells(v.sheet.id, [[r * 16384 + c, { ...prev, img }]]);
+	}
+
 	function act(fn: () => void) {
 		ctxMenu = null;
 		fn();
@@ -188,13 +215,35 @@
 				<div class="no-print border-b border-warn/40 bg-warn/10 px-4 py-1.5 text-sm text-warn">{t().file.readOnlyDetail}</div>
 			{/if}
 			<FormulaBar {view} {readonly} />
-			<Grid
-				{view}
-				{readonly}
-				oncontext={(e, kind) => (ctxMenu = { x: e.clientX, y: e.clientY, kind })}
-				onfilter={(col, x, y) => (filterMenu = { col, x, y })}
-				onshortcut={(e) => (view ? A.shortcut(view, e, readonly) : false)}
-			/>
+			<div class="flex min-h-0 flex-1">
+				<div class="flex min-w-0 flex-1 flex-col">
+					<Grid
+						{view}
+						{readonly}
+						oncontext={(e, kind) => (ctxMenu = { x: e.clientX, y: e.clientY, kind })}
+						onfilter={(col, x, y) => (filterMenu = { col, x, y })}
+						onshortcut={(e) => (view ? A.shortcut(view, e, readonly) : false)}
+					/>
+				</div>
+				{#if editing && view}
+					{@const v = view}
+					{@const ch = editing}
+					<ChartPanel
+						options={ch}
+						source={ch.source}
+						seriesNames={chartData(v.book.wb, ch, (s, r, c) => v.book.text(s, r, c)).series.map((s) => s.name)}
+						validateRange={(r) => !!resolveRange(v.book.wb, r)}
+						onchange={(patch) => v.book.updateObject(v.sheet.id, ch.id, patch)}
+						onclose={() => ((v.editingChart = null), v.focusTick++)}
+						ondelete={() => {
+							v.book.removeObject(v.sheet.id, ch.id);
+							v.editingChart = null;
+							v.object = null;
+							v.focusTick++;
+						}}
+					/>
+				{/if}
+			</div>
 			<SheetTabs {view} {readonly} />
 		{:else}
 			<div class="grid flex-1 place-items-center text-muted">{t().common.loading}</div>
@@ -224,6 +273,18 @@
 			<div class="my-1 border-t border-line"></div>
 			<button class="menu-item" onclick={() => act(() => v.book.clear(v.sheet.id, v.ranges, 'contents'))}>{t().sheet.clearContents}</button>
 			<button class="menu-item" onclick={() => act(() => v.book.clear(v.sheet.id, v.ranges, 'formats'))}>{t().sheet.clearFormats}</button>
+			{#if ctxMenu.kind === 'cell' && cellImg(v)}
+				{@const img = cellImg(v)!}
+				<div class="my-1 border-t border-line"></div>
+				<button class="menu-item" onclick={() => act(() => setCellImg(v, { ...img, fit: img.fit === 'contain' ? 'cover' : 'contain' }))}>{img.fit === 'contain' ? t().object.fitCover : t().object.fitContain}</button>
+				<button class="menu-item" onclick={async () => {
+					ctxMenu = null;
+					const alt = await promptDialog(t().object.altPrompt, img.alt ?? '');
+					if (alt !== null) setCellImg(v, { ...img, alt });
+					v.focusTick++;
+				}}>{t().object.alt}</button>
+				<button class="menu-item text-bad" onclick={() => act(() => setCellImg(v, undefined))}>{t().object.removeImage}</button>
+			{/if}
 			{#if ctxMenu.kind === 'col'}
 				<button class="menu-item" onclick={() => act(() => v.book.resize(v.sheet.id, 'col', v.indices('col'), undefined))}>{t().sheet.autofit}</button>
 			{/if}

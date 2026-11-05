@@ -5,6 +5,12 @@
 	// Input goes through one textarea ("sink") that is always focused: typing starts editing (IME-safe),
 	// arrows navigate, copy/paste events carry clipboard data.
 	import { tick } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
+	import ObjectLayer from './ObjectLayer.svelte';
+	import { chartData, type ChartData } from '../../sheets/charts.ts';
+	import { anchorXY, insertImages, isImageFile, xyAnchor } from '../../sheets/objects.ts';
+	import { urlFor } from '../../storage/blobs.ts';
+	import type { CellImage, SheetObject } from '../../sheets/model.ts';
 	import { cellKey, colName, keyCol, type Range } from '../../sheets/addr.ts';
 	import type { Display } from '../../sheets/book.svelte.ts';
 	import { formulaRefs } from '../../sheets/formula/refs.ts';
@@ -84,7 +90,7 @@
 	// ---------- Cells ----------
 
 	/** `ow` = width the text may spill into (left-aligned text over empty neighbours); `nr` = hide right gridline. */
-	type CellBox = { key: number; r: number; c: number; x: number; y: number; w: number; h: number; d: Display; filterBtn: boolean; ow?: number; nr?: boolean };
+	type CellBox = { key: number; r: number; c: number; x: number; y: number; w: number; h: number; d: Display; filterBtn: boolean; ow?: number; nr?: boolean; img?: CellImage };
 
 	let measureCtx: CanvasRenderingContext2D | null = null;
 	const widthCache = new Map<string, number>();
@@ -110,7 +116,7 @@
 	function cached(key: number, r: number, c: number, filterBtn: boolean): CellBox {
 		const hit = cache.get(key);
 		if (hit && hit.filterBtn === filterBtn) return hit;
-		const b: CellBox = { key, r, c, x: cols.offset(c), y: rows.offset(r), w: cols.size(c), h: rows.size(r), d: book.display(sheet, r, c), filterBtn };
+		const b: CellBox = { key, r, c, x: cols.offset(c), y: rows.offset(r), w: cols.size(c), h: rows.size(r), d: book.display(sheet, r, c), filterBtn, img: sheet.cells.get(key)?.img };
 		cache.set(key, b);
 		return b;
 	}
@@ -177,7 +183,8 @@
 				w: cols.offset(m.c2 + 1) - cols.offset(m.c1),
 				h: rows.offset(m.r2 + 1) - rows.offset(m.r1),
 				d: book.display(s, m.r1, m.c1),
-				filterBtn: false
+				filterBtn: false,
+				img: s.cells.get(key)?.img
 			});
 		}
 		return out;
@@ -187,6 +194,74 @@
 	const topBoxes = $derived(boxes(frozenRows, bodyCols));
 	const leftBoxes = $derived(boxes(bodyRows, frozenCols));
 	const cornerBoxes = $derived(boxes(frozenRows, frozenCols));
+
+	// ---------- Floating objects and cell images ----------
+
+	/** blobId → object URL (loaded on demand from IndexedDB). */
+	const urls = new SvelteMap<string, string>();
+	const loading = new Set<string>();
+	function want(blobId: string) {
+		if (urls.has(blobId) || loading.has(blobId)) return;
+		loading.add(blobId);
+		void urlFor(blobId).then((u) => {
+			loading.delete(blobId);
+			if (u) urls.set(blobId, u);
+		});
+	}
+	$effect(() => {
+		void book.rev;
+		for (const o of sheet.objects) if (o.kind === 'image') want(o.blobId);
+		for (const list of [bodyBoxes, topBoxes, leftBoxes, cornerBoxes]) for (const b of list) if (b.img) want(b.img.blobId);
+	});
+
+	/** Objects drawn in each pane: by where their anchor cell is (frozen rows/cols stay frozen). */
+	const paneObjects = $derived.by(() => {
+		void book.rev;
+		const out: Record<string, SheetObject[]> = { body: [], top: [], left: [], corner: [] };
+		for (const o of sheet.objects) {
+			const top = o.anchor.r < fr;
+			const left = o.anchor.c < fc;
+			out[top && left ? 'corner' : top ? 'top' : left ? 'left' : 'body'].push(o);
+		}
+		return out;
+	});
+
+	const dataCache = new Map<string, { rev: number; data: ChartData }>();
+	function dataFor(o: SheetObject): ChartData {
+		if (o.kind !== 'chart') return { labels: [], series: [] };
+		const key = `${o.id}|${o.type}|${JSON.stringify(o.source)}|${i18n.locale}`;
+		const hit = dataCache.get(key);
+		if (hit && hit.rev === book.rev) return hit.data;
+		const data = chartData(book.wb, o, (s, r, c) => book.text(s, r, c));
+		// Same values as before → same object, so the chart does not redraw.
+		const same = hit && JSON.stringify(hit.data) === JSON.stringify(data);
+		const out = same ? hit!.data : data;
+		dataCache.set(key, { rev: book.rev, data: out });
+		return out;
+	}
+
+	function moveObject(id: string, dx: number, dy: number) {
+		const o = book.object(sheet.id, id);
+		if (!o) return;
+		const p = anchorXY(o.anchor, rows, cols);
+		book.updateObject(sheet.id, id, { anchor: xyAnchor(p.x + dx, p.y + dy, rows, cols) });
+	}
+
+	function cloneObject(o: SheetObject, at: { r: number; c: number }): SheetObject {
+		const c = structuredClone($state.snapshot(o)) as SheetObject;
+		c.id = crypto.randomUUID();
+		c.anchor = { r: at.r, c: at.c, dx: 8, dy: 8 };
+		return c;
+	}
+
+	function onDrop(e: DragEvent) {
+		const files = [...(e.dataTransfer?.files ?? [])].filter(isImageFile);
+		if (!files.length || readonly) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const h = hit(e.clientX, e.clientY);
+		void insertImages(view, files, h.area === 'cell' ? { r: h.r, c: h.c } : undefined);
+	}
 
 	const panes = $derived(
 		[
@@ -467,7 +542,8 @@
 	function down(e: PointerEvent) {
 		if (e.button === 2) return; // context menu handles it
 		const target = e.target as HTMLElement;
-		if (target.closest('[data-filter-btn]') || target.closest('[data-add-rows]') || target.closest('[data-fn-list]')) return;
+		if (target.closest('[data-filter-btn]') || target.closest('[data-add-rows]') || target.closest('[data-fn-list]') || target.closest('[data-object]')) return;
+		view.object = null;
 		const h = hit(e.clientX, e.clientY);
 		if (h.area === 'none') return;
 		lastPointer = { x: e.clientX, y: e.clientY };
@@ -715,10 +791,47 @@
 
 	// ---------- Keyboard ----------
 
+	/** Keyboard while a floating object is selected: Delete, Escape, arrows (Shift = 10 px), Enter = edit chart. */
+	function objectKey(e: KeyboardEvent): boolean {
+		const id = view.object;
+		if (!id) return false;
+		const o = book.object(sheet.id, id);
+		if (!o) {
+			view.object = null;
+			return false;
+		}
+		const mod = e.ctrlKey || e.metaKey;
+		if (mod && ['c', 'x', 'v', 'z', 'y'].includes(e.key.toLowerCase())) return false; // clipboard events / undo
+		e.preventDefault();
+		if (e.key === 'Escape') view.object = null;
+		else if (readonly) return true;
+		else if (e.key === 'Delete' || e.key === 'Backspace') {
+			book.removeObject(sheet.id, id);
+			view.object = null;
+		} else if (e.key.startsWith('Arrow')) {
+			const step = e.shiftKey ? 10 : 1;
+			moveObject(id, e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0, e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0);
+		} else if (e.key === 'Enter' && o.kind === 'chart') view.editingChart = id;
+		return true;
+	}
+
 	function key(e: KeyboardEvent) {
 		if (e.isComposing) return;
 		const mod = e.ctrlKey || e.metaKey;
 		const editing = view.edit;
+		// Ctrl+Alt+O: keyboard access to floating objects (cycles through them and scrolls to the one selected).
+		if (!editing && mod && e.altKey && e.key.toLowerCase() === 'o') {
+			e.preventDefault();
+			const list = sheet.objects;
+			if (!list.length) return;
+			const i = list.findIndex((o) => o.id === view.object);
+			const next = list[(i + 1) % list.length];
+			view.object = next.id;
+			view.active = { r: next.anchor.r, c: next.anchor.c };
+			view.reveal++;
+			return;
+		}
+		if (!editing && objectKey(e)) return;
 		if (editing) {
 			if (fnQuery && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
 				e.preventDefault();
@@ -859,9 +972,21 @@
 		if (!view.edit && !readonly) view.startEdit('', 'enter');
 	}
 
+	const OBJ_MARK = 'mai-object:';
+
 	function onCopy(e: ClipboardEvent, cut: boolean) {
 		if (view.edit) return;
 		e.preventDefault();
+		const o = view.object ? book.object(sheet.id, view.object) : undefined;
+		if (o) {
+			view.objClip = structuredClone($state.snapshot(o)) as SheetObject;
+			e.clipboardData?.setData('text/plain', OBJ_MARK + o.id);
+			if (cut && !readonly) {
+				book.removeObject(sheet.id, o.id);
+				view.object = null;
+			}
+			return;
+		}
 		const { text, html } = view.copy(cut && !readonly);
 		e.clipboardData?.setData('text/plain', text);
 		e.clipboardData?.setData('text/html', html);
@@ -870,7 +995,19 @@
 	function onPaste(e: ClipboardEvent) {
 		if (view.edit || readonly) return;
 		e.preventDefault();
-		view.paste({ text: e.clipboardData?.getData('text/plain'), html: e.clipboardData?.getData('text/html') || undefined });
+		const text = e.clipboardData?.getData('text/plain');
+		if (text?.startsWith(OBJ_MARK) && view.objClip) {
+			const c = cloneObject(view.objClip, view.active);
+			book.addObject(sheet.id, c);
+			view.object = c.id;
+			return;
+		}
+		const files = [...(e.clipboardData?.files ?? [])].filter(isImageFile);
+		if (files.length && !text) {
+			void insertImages(view, files);
+			return;
+		}
+		view.paste({ text, html: e.clipboardData?.getData('text/html') || undefined });
 	}
 
 	const clipRect = $derived(view.clip && view.clip.sheetId === sheet.id ? rectOf(view.clip.range) : null);
@@ -886,6 +1023,10 @@
 			aria-rowindex={b.r + 1}
 			aria-colindex={b.c + 1}
 		>
+			{#if b.img}
+				{@const u = urls.get(b.img.blobId)}
+				{#if u}<img src={u} alt={b.img.alt ?? ''} draggable="false" class="pointer-events-none absolute inset-px h-[calc(100%-2px)] w-[calc(100%-2px)] select-none" style="object-fit:{b.img.fit}" />{/if}
+			{/if}
 			<span class="min-w-0 {b.d.style.wrap ? '' : b.ow ? 'shrink-0 overflow-hidden' : 'overflow-hidden text-ellipsis'}" class:pr-4={b.filterBtn} style={b.ow ? `width:${b.ow - 8}px` : ''}>{b.d.text}</span>
 			{#if b.filterBtn}
 				{@const crit = sheet.filter?.criteria[b.c]}
@@ -944,6 +1085,8 @@
 				onpointerup={up}
 				onpointercancel={up}
 				ondblclick={dbl}
+				ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
+				ondrop={onDrop}
 				oncontextmenu={ctx}
 				role="grid"
 				tabindex="-1"
@@ -956,6 +1099,7 @@
 						<div class="absolute top-0 left-0" style="transform:translate({p.tx}px,{p.ty}px)">
 							{#if p.id === 'body'}{@render cellList(bodyBoxes)}{:else if p.id === 'top'}{@render cellList(topBoxes)}{:else if p.id === 'left'}{@render cellList(leftBoxes)}{:else}{@render cellList(cornerBoxes)}{/if}
 							{@render overlays(p)}
+							<ObjectLayer {view} objects={paneObjects[p.id]} {rows} {cols} {readonly} {urls} {dataFor} />
 						</div>
 					</div>
 				{/each}

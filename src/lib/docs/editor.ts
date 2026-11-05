@@ -1,7 +1,11 @@
 // Creates the Tiptap editor for a document: extensions, image paste/drop into the blob store.
 import { Editor, type JSONContent } from '@tiptap/core';
 import { putBlob, urlFor } from '../storage/blobs.ts';
+import { prepareImage } from '../files/images.ts';
+import { toast } from '../client/toast.svelte.ts';
+import { t } from '../i18n/index.svelte.ts';
 import { editorExtensions } from './extensions/index.ts';
+import { ChartNodeWithView } from '../components/docs/chart-view.svelte.ts';
 
 export type DocEditorOpts = {
 	element: HTMLElement;
@@ -17,7 +21,9 @@ const isImage = (f: File) => f.type.startsWith('image/');
 
 export async function insertImages(editor: Editor, docId: string, files: File[], pos?: number) {
 	for (const f of files.filter(isImage)) {
-		const id = await putBlob(docId, f);
+		const p = await prepareImage(f);
+		if (p.reencoded) toast.info(t().object.reencoded(f.name));
+		const id = await putBlob(docId, p.blob);
 		const src = await urlFor(id);
 		if (!src) continue;
 		const node = { type: 'image', attrs: { src, alt: f.name } };
@@ -29,7 +35,7 @@ export async function insertImages(editor: Editor, docId: string, files: File[],
 export function createDocEditor(o: DocEditorOpts): Editor {
 	const editor: Editor = new Editor({
 		element: o.element,
-		extensions: editorExtensions(o.placeholder),
+		extensions: editorExtensions(o.placeholder, ChartNodeWithView),
 		content: o.content,
 		editable: o.editable,
 		autofocus: false,

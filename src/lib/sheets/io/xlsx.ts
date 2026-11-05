@@ -1,10 +1,11 @@
 // .xlsx ⇄ workbook with exceljs (loaded on demand; browser build in the app, Node build in tests).
 // Supported: values, formulas (+ cached results), cell styles, number formats, merges, column widths, row heights,
-// frozen panes, autofilter range, several sheets. Not supported (reported as lost): images, charts,
-// data validation, conditional formatting.
+// frozen panes, autofilter range, several sheets, floating images and images in cells (exceljs), native charts
+// (xlsx-charts.ts). Not supported (reported as lost): data validation, conditional formatting.
 import type * as ExcelNS from 'exceljs';
 import { a1, cellKey, keyCol, keyRow, parseRange, rangeA1, type Range } from '../addr.ts';
-import { DEFAULT_COL_W, DEFAULT_ROW_H, newSheet, styleIndex, uniqueSheetName, type BorderSide, type CellStyle, type Workbook, type WorkbookContent, toContent } from '../model.ts';
+import { DEFAULT_COL_W, DEFAULT_ROW_H, newSheet, styleIndex, uniqueSheetName, valueText, type BorderSide, type CellStyle, type Sheet, type Workbook, type WorkbookContent, toContent } from '../model.ts';
+import { addChartsToXlsx, axesOf, readChartsFromXlsx } from './xlsx-charts.ts';
 import { ERROR_CODES, isErr, serialToUtcDate, utcDateToSerial, type ErrorCode, type Value } from '../values.ts';
 
 type ExcelJS = typeof ExcelNS;
@@ -102,12 +103,69 @@ function readValue(v: ExcelNS.CellValue): Value {
 	return null;
 }
 
-export async function readXlsx(buf: ArrayBuffer | Uint8Array, sheetBaseName: (n: number) => string): Promise<{ content: WorkbookContent; lost: LostKind[] }> {
+export type SaveImage = (blob: Blob) => Promise<string>;
+/** Image bytes for export (PNG/JPEG/GIF only: Excel can't show WebP). */
+export type LoadImage = (blobId: string) => Promise<{ data: Uint8Array; extension: 'png' | 'jpeg' | 'gif' } | null>;
+
+type NativeAnchor = { nativeCol: number; nativeColOff: number; nativeRow: number; nativeRowOff: number };
+type SheetImageModel = { imageId: string | number; range: { tl: NativeAnchor; br?: NativeAnchor; ext?: { width: number; height: number }; editAs?: string } };
+
+const EMU = 9525;
+
+async function importImage(x: ExcelNS.Workbook, s: Sheet, img: SheetImageModel, save: SaveImage) {
+	const media = x.getImage(Number(img.imageId)) as unknown as { buffer?: Uint8Array; base64?: string; extension?: string } | undefined;
+	if (!media) return;
+	const bytes = media.buffer ?? (media.base64 ? Uint8Array.from(atob(media.base64.replace(/^data:[^,]+,/, '')), (c) => c.charCodeAt(0)) : undefined);
+	if (!bytes) return;
+	const ext = (media.extension ?? 'png').toLowerCase();
+	const blob = new Blob([bytes as BlobPart], { type: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
+	const blobId = await save(blob);
+	const { rows, cols } = axesOf(s);
+	const tl = img.range.tl;
+	const c = Math.floor(tl.nativeCol ?? 0);
+	const r = Math.floor(tl.nativeRow ?? 0);
+	const x1 = cols.offset(c) + (tl.nativeColOff ?? 0) / EMU;
+	const y1 = rows.offset(r) + (tl.nativeRowOff ?? 0) / EMU;
+	let w: number;
+	let h: number;
+	if (img.range.br) {
+		const br = img.range.br;
+		w = cols.offset(Math.floor(br.nativeCol)) + (br.nativeColOff ?? 0) / EMU - x1;
+		h = rows.offset(Math.floor(br.nativeRow)) + (br.nativeRowOff ?? 0) / EMU - y1;
+	} else {
+		w = img.range.ext?.width ?? 200;
+		h = img.range.ext?.height ?? 150;
+	}
+	w = Math.max(8, Math.round(w));
+	h = Math.max(8, Math.round(h));
+	const dx = Math.round(x1 - cols.offset(c));
+	const dy = Math.round(y1 - rows.offset(r));
+	// An image that exactly covers one cell was an "image in cell" (our own export) → back into the cell.
+	if (dx <= 1 && dy <= 1 && Math.abs(w - cols.size(c)) <= 2 && Math.abs(h - rows.size(r)) <= 2) {
+		const k = cellKey(r, c);
+		s.cells.set(k, { ...s.cells.get(k), img: { blobId, fit: 'contain' } });
+		return;
+	}
+	s.objects.push({ id: crypto.randomUUID(), kind: 'image', blobId, anchor: { r, c, dx, dy }, w, h });
+}
+
+function toBase64(bytes: Uint8Array) {
+	let s = '';
+	for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+	return btoa(s);
+}
+
+export async function readXlsx(
+	buf: ArrayBuffer | Uint8Array,
+	sheetBaseName: (n: number) => string,
+	saveImage?: SaveImage
+): Promise<{ content: WorkbookContent; lost: LostKind[]; chartsSimplified: boolean }> {
 	const Excel = await lib();
 	const x = new Excel.Workbook();
 	await x.xlsx.load(buf as ArrayBuffer);
 	const wb: Workbook = { sheets: [], active: '', styles: [{}] };
 	const lost = new Set<LostKind>();
+	const pendingImages: { s: Sheet; img: SheetImageModel }[] = [];
 	x.eachSheet((ws) => {
 		const s = newSheet(ws.name || uniqueSheetName(wb, sheetBaseName));
 		let maxR = 0;
@@ -155,7 +213,10 @@ export async function readXlsx(buf: ArrayBuffer | Uint8Array, sheetBaseName: (n:
 		s.rows = Math.max(s.rows, maxR + 100);
 		s.cols = Math.max(s.cols, maxC + 1);
 		try {
-			if (ws.getImages().length) lost.add('images');
+			for (const img of ws.getImages() as unknown as SheetImageModel[]) {
+				if (saveImage) pendingImages.push({ s, img });
+				else lost.add('images');
+			}
 		} catch {
 			/* older exceljs */
 		}
@@ -166,7 +227,16 @@ export async function readXlsx(buf: ArrayBuffer | Uint8Array, sheetBaseName: (n:
 	});
 	if (!wb.sheets.length) wb.sheets.push(newSheet(sheetBaseName(1)));
 	wb.active = wb.sheets[0].id;
-	return { content: toContent(wb), lost: [...lost] };
+	for (const { s, img } of pendingImages) await importImage(x, s, img, saveImage!);
+	const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+	let chartsSimplified = false;
+	try {
+		chartsSimplified = readChartsFromXlsx(bytes, wb).simplified;
+	} catch (e) {
+		console.warn('[mai] charts not imported', e);
+		lost.add('charts');
+	}
+	return { content: toContent(wb), lost: [...lost], chartsSimplified };
 }
 
 function autoFilterRange(af: { from: unknown; to: unknown }): Range | null {
@@ -203,7 +273,7 @@ function writeStyle(cell: ExcelNS.Cell, st: CellStyle) {
 
 const xlError = (code: ErrorCode) => ({ error: code === '#CIRC!' || code === '#SPILL!' || code === '#CALC!' ? '#REF!' : code }) as unknown as ExcelNS.CellErrorValue;
 
-export async function writeXlsx(wb: Workbook): Promise<Uint8Array> {
+export async function writeXlsx(wb: Workbook, loadImage?: LoadImage, text?: (s: Sheet, r: number, c: number) => string): Promise<Uint8Array> {
 	const Excel = await lib();
 	const x = new Excel.Workbook();
 	x.creator = 'Mai Docs';
@@ -227,9 +297,40 @@ export async function writeXlsx(wb: Workbook): Promise<Uint8Array> {
 		}
 		for (const m of s.merges) ws.mergeCells(m.r1 + 1, m.c1 + 1, m.r2 + 1, m.c2 + 1);
 		if (s.filter) ws.autoFilter = rangeA1(s.filter.range);
+		if (loadImage) await writeImages(x, ws, s, loadImage);
 	}
-	const out = await x.xlsx.writeBuffer();
-	return new Uint8Array(out as ArrayBuffer);
+	const out = new Uint8Array((await x.xlsx.writeBuffer()) as ArrayBuffer);
+	return addChartsToXlsx(out, wb, text ?? ((sh, r, c) => valueText(sh.cells.get(cellKey(r, c))?.v ?? null)));
+}
+
+/** Floating images (two-cell, move with cells) and cell images (sized to their cell). */
+async function writeImages(x: ExcelNS.Workbook, ws: ExcelNS.Worksheet, s: Sheet, load: LoadImage) {
+	const { rows, cols } = axesOf(s);
+	const ids = new Map<string, number>();
+	const imageId = async (blobId: string) => {
+		if (ids.has(blobId)) return ids.get(blobId)!;
+		const img = await load(blobId);
+		if (!img) return -1;
+		const id = x.addImage({ base64: `data:image/${img.extension};base64,${toBase64(img.data)}`, extension: img.extension });
+		ids.set(blobId, id);
+		return id;
+	};
+	for (const o of s.objects) {
+		if (o.kind !== 'image') continue;
+		const id = await imageId(o.blobId);
+		if (id < 0) continue;
+		// Native EMU offsets: exceljs converts fractional cells with its own default sizes.
+		const tl = { nativeCol: o.anchor.c, nativeColOff: Math.round(o.anchor.dx * EMU), nativeRow: o.anchor.r, nativeRowOff: Math.round(o.anchor.dy * EMU) };
+		ws.addImage(id, { tl, ext: { width: o.w, height: o.h }, editAs: 'oneCell' } as never);
+	}
+	for (const [k, cell] of s.cells) {
+		if (!cell.img) continue;
+		const id = await imageId(cell.img.blobId);
+		if (id < 0) continue;
+		const r = keyRow(k);
+		const c = keyCol(k);
+		ws.addImage(id, { tl: { col: c, row: r }, ext: { width: cols.size(c), height: rows.size(r) }, editAs: 'oneCell' } as never);
+	}
 }
 
 export { serialToUtcDate, DEFAULT_COL_W, DEFAULT_ROW_H };

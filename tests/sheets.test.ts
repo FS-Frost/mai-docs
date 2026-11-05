@@ -227,3 +227,10 @@ describe('xlsx', () => {
 		expect(toContent(back).v).toBe(1);
 	}, 30_000);
 });
+
+describe('edit text regression', () => {
+	test('plain words are not prefixed with an apostrophe', () => {
+		expect(editText({ v: 'Mes' }, 'es')).toBe('Mes');
+		expect(editText({ v: '12' }, 'es')).toBe("'12");
+	});
+});

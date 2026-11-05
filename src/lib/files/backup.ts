@@ -44,7 +44,7 @@ export async function importLibrary(file: Blob): Promise<number> {
 			if (!bytes) continue;
 			const nb = uid();
 			await d.put('blobs', { id: nb, docId: newId, blob: new Blob([bytes as BlobPart], { type: b.type }), type: b.type });
-			json = json.split(BLOB_PREFIX + b.id).join(BLOB_PREFIX + nb);
+			json = json.split(b.id).join(nb);
 		}
 		await createFile(f.kind, f.title, JSON.parse(json), { createdAt: f.createdAt, updatedAt: f.updatedAt, size: f.size }, newId);
 		n++;

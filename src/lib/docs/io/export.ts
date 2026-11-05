@@ -1,8 +1,13 @@
 // Browser exports from a live editor: docx, md, html, txt.
-import type { Editor } from '@tiptap/core';
+import { generateHTML, type Editor, type JSONContent } from '@tiptap/core';
+import { renderChartPng } from '../../charts/render.ts';
+import { i18n } from '../../i18n/index.svelte.ts';
+import type { DocChartAttrs } from '../extensions/chart-node.ts';
+import { schemaExtensions } from '../extensions/index.ts';
+import { jsonToMarkdown } from './markdown.ts';
 import { blobToDataUrl, dehydrate, resolveSrc } from '../../storage/blobs.ts';
 import { pageDims, type PageSetup } from '../model.ts';
-import { buildDocx, docxBytes } from './docx-export.ts';
+import { buildDocx, docxBytes, type ChartLoader } from './docx-export.ts';
 import { loadDocxImage } from './images.ts';
 
 export type DocFormat = 'docx' | 'md' | 'html' | 'txt';
@@ -24,23 +29,45 @@ async function inlineImages(text: string): Promise<string> {
 	return text;
 }
 
+/** Chart block → PNG (Chart.js) for docx; data URL images for md/html. */
+async function chartPng(a: Record<string, unknown>) {
+	const attrs = a as unknown as DocChartAttrs;
+	const blob = await renderChartPng(attrs.options, attrs.data, attrs.width, attrs.height, i18n.locale);
+	return { blob, width: attrs.width, height: attrs.height };
+}
+
+const chartImage: ChartLoader = async (a) => {
+	const { blob, width, height } = await chartPng(a);
+	return { data: new Uint8Array(await blob.arrayBuffer()), type: 'png', width, height };
+};
+
+async function chartsAsImages(node: JSONContent): Promise<JSONContent> {
+	if (node.type === 'chart') {
+		const { blob, width } = await chartPng(node.attrs ?? {});
+		const title = (node.attrs as DocChartAttrs | undefined)?.options?.title;
+		return { type: 'image', attrs: { src: await blobToDataUrl(blob), alt: title ?? '', width } };
+	}
+	if (!node.content) return node;
+	return { ...node, content: await Promise.all(node.content.map(chartsAsImages)) };
+}
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export async function exportDoc(editor: Editor, format: DocFormat, page: PageSetup, title: string): Promise<Blob> {
 	const { mime } = FORMATS[format];
 	switch (format) {
 		case 'docx': {
-			const doc = await buildDocx(dehydrate(editor.getJSON()), page, loadDocxImage, title);
+			const doc = await buildDocx(dehydrate(editor.getJSON()), page, loadDocxImage, title, chartImage);
 			return new Blob([await docxBytes(doc)], { type: mime });
 		}
 		case 'md': {
-			const md = (editor as unknown as { getMarkdown(): string }).getMarkdown();
+			const md = jsonToMarkdown(await chartsAsImages(editor.getJSON()));
 			return new Blob([await inlineImages(md)], { type: mime });
 		}
 		case 'html': {
 			const d = pageDims(page);
 			const m = page.margins;
-			const body = await inlineImages(editor.getHTML());
+			const body = await inlineImages(generateHTML(await chartsAsImages(editor.getJSON()), schemaExtensions()));
 			const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${esc(title)}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -52,6 +79,9 @@ table{border-collapse:collapse;width:100%}td,th{border:1px solid #9a9a9a;padding
 td>p,th>p,li>p{margin:0}img{max-width:100%;height:auto}blockquote{border-left:3px solid #ccc;margin-left:0;padding-left:1em;color:#555}
 pre{background:#f5f5f5;padding:.7em .9em;border-radius:4px;white-space:pre-wrap}code{font-family:Consolas,monospace}
 ul[data-type=taskList]{list-style:none;padding-left:.2em}ul[data-type=taskList] li{display:flex;gap:.5em}
+img[data-align=center]{display:block;margin:0 auto}img[data-align=right]{display:block;margin-left:auto}
+img[data-wrap=left]{float:left;margin:.2em 1em .5em 0}img[data-wrap=right]{float:right;margin:.2em 0 .5em 1em}
+p.caption{font-size:.85em;font-style:italic;color:#555}h1,h2,h3,table{clear:both}
 </style></head><body>
 ${body}
 </body></html>`;

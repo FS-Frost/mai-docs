@@ -2,6 +2,7 @@
 	import { promptDialog } from '../../client/dialogs.svelte.ts';
 	import { dep } from '../../client/dep.ts';
 	import * as A from '../../sheets/actions.ts';
+	import * as O from '../../sheets/objects.ts';
 	import { presetOf, type FmtPreset } from '../../sheets/format.ts';
 	import type { SheetView } from '../../sheets/view.svelte.ts';
 	import { i18n, t } from '../../i18n/index.svelte.ts';
@@ -142,6 +143,19 @@
 	{#each vAligns as b (b.icon)}{@render btn(b)}{/each}
 	{@render btn({ icon: 'wrap', label: t().sheet.wrap, run: () => A.toggleStyle(view, 'wrap'), active: !!st.wrap })}
 	{@render btn({ icon: 'merge', label: merged ? t().sheet.unmerge : t().sheet.merge, run: () => A.mergeToggle(view), active: merged })}
+	<span class="tb-sep"></span>
+	<Menu title={t().doc.insert} triggerClass="tb gap-0">
+		{#snippet icon()}<Icon name="plus" />{/snippet}
+		{#snippet children(close)}
+			<button class="menu-item" onclick={async () => (close(), O.insertImages(view, await O.pickImage()))}><Icon name="image" size={16} />{t().object.image}</button>
+			<button class="menu-item" onclick={async () => {
+				close();
+				const [f] = await O.pickImage(false);
+				if (f) await O.insertCellImage(view, f);
+			}}><Icon name="image" size={16} />{t().object.imageInCell}</button>
+			<button class="menu-item" onclick={() => (close(), O.insertChart(view))}><Icon name="chart" size={16} />{t().chart.insert}</button>
+		{/snippet}
+	</Menu>
 	<span class="tb-sep"></span>
 	<Menu title={t().sheet.freeze} triggerClass="tb gap-0 {sheet.freeze.rows || sheet.freeze.cols ? 'text-accent' : ''}">
 		{#snippet icon()}<Icon name="freeze" />{/snippet}

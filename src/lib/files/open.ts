@@ -4,6 +4,7 @@ import { i18n, t } from '../i18n/index.svelte.ts';
 import type { LostKind } from '../sheets/io/xlsx.ts';
 import { toContent, type Workbook } from '../sheets/model.ts';
 import { uid } from '../storage/db.ts';
+import { putBlob } from '../storage/blobs.ts';
 import { setHandle } from '../storage/handles.ts';
 import { createFile, type FileMeta } from '../storage/library.ts';
 
@@ -38,10 +39,12 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 		if (handle && e === '.docx') await setHandle(meta.id, handle);
 	} else if (ACCEPT.sheet.includes(e)) {
 		let content;
+		const id = uid();
 		if (e === '.xlsx') {
-			const res = await readXlsx(await file.arrayBuffer(), t().sheet.sheetName);
+			const res = await readXlsx(await file.arrayBuffer(), t().sheet.sheetName, (blob) => putBlob(id, blob));
 			content = res.content;
 			if (res.lost.length) warnings.push(t().sheet.importLossy(res.lost.map((l) => lostLabel(l)).join(', ')));
+			if (res.chartsSimplified) warnings.push(t().chart.simplified);
 		} else {
 			const wb: Workbook = { sheets: [], active: '', styles: [{}] };
 			const s = csvToSheet(wb, await file.text(), title.slice(0, 31) || t().sheet.sheetName(1), locale);
@@ -49,7 +52,7 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 			wb.active = s.id;
 			content = toContent(wb);
 		}
-		meta = await createFile('sheet', title, content, { origin });
+		meta = await createFile('sheet', title, content, { origin }, id);
 		if (handle && e === '.xlsx') await setHandle(meta.id, handle);
 	} else throw new Error(t().library.unsupported(file.name));
 	return { meta, warnings };

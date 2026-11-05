@@ -20,8 +20,48 @@ export type CellStyle = {
 	border?: { top?: BorderSide; right?: BorderSide; bottom?: BorderSide; left?: BorderSide };
 };
 
+/** Image shown inside a cell (moves with the cell: copy, fill, sort, filter). */
+export type CellImage = { blobId: string; alt?: string; fit: 'contain' | 'cover' };
+
 /** f = formula without '='; v = literal value or cached formula result; s = index into Workbook.styles. */
-export type Cell = { v?: Value; f?: string; s?: number };
+export type Cell = { v?: Value; f?: string; s?: number; img?: CellImage };
+
+// ---------- Floating objects (images and charts) ----------
+
+/** Top-left of a floating object: cell + offset inside it (px). */
+export type Anchor = { r: number; c: number; dx: number; dy: number };
+
+export type ChartType = 'column' | 'bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter';
+
+export type ChartSource = {
+	/** A1 range with sheet prefix, e.g. "Hoja1!A1:C6" (rewritten on structural changes like a formula). */
+	range: string;
+	seriesIn: 'cols' | 'rows';
+	/** First row holds series names (cols) / categories (rows). */
+	headerRow: boolean;
+	/** First column holds categories (cols) / series names (rows). */
+	headerCol: boolean;
+};
+
+export type ChartOptions = {
+	type: ChartType;
+	stacked?: boolean | 'percent';
+	title?: string;
+	legend: 'top' | 'bottom' | 'right' | 'none';
+	xTitle?: string;
+	yTitle?: string;
+	yMin?: number;
+	yMax?: number;
+	/** Per-series colors; missing = palette slot. */
+	colors?: string[];
+};
+
+export type SheetObject =
+	| { id: string; kind: 'image'; blobId: string; anchor: Anchor; w: number; h: number; alt?: string }
+	| ({ id: string; kind: 'chart'; source: ChartSource; anchor: Anchor; w: number; h: number } & ChartOptions);
+
+export type ImageObject = Extract<SheetObject, { kind: 'image' }>;
+export type ChartObject = Extract<SheetObject, { kind: 'chart' }>;
 
 export type FilterCriterion = {
 	/** Visible display values; undefined = all. */
@@ -42,6 +82,7 @@ export type Sheet = {
 	merges: Range[];
 	freeze: { rows: number; cols: number };
 	filter?: Filter;
+	objects: SheetObject[];
 	/** Derived from the filter; not persisted. */
 	hidden: Set<number>;
 };
@@ -66,6 +107,7 @@ export type SheetJSON = {
 	merges: Range[];
 	freeze: { rows: number; cols: number };
 	filter?: Filter;
+	objects?: SheetObject[];
 };
 export type WorkbookContent = { v: 1; sheets: SheetJSON[]; active: string; styles: CellStyle[] };
 
@@ -80,7 +122,8 @@ export function newSheet(name: string, id: string = crypto.randomUUID()): Sheet 
 		rowHeights: new Map(),
 		merges: [],
 		freeze: { rows: 0, cols: 0 },
-		hidden: new Set()
+		hidden: new Set(),
+		objects: []
 	};
 }
 
@@ -96,7 +139,8 @@ export function sheetToJSON(s: Sheet): SheetJSON {
 		if (c.v !== undefined && c.v !== null) out.v = c.v;
 		if (c.f) out.f = c.f;
 		if (c.s) out.s = c.s;
-		if (out.v !== undefined || out.f || out.s) cells.push([`${keyRow(k)}:${keyCol(k)}`, out]);
+		if (c.img) out.img = { ...c.img };
+		if (out.v !== undefined || out.f || out.s || out.img) cells.push([`${keyRow(k)}:${keyCol(k)}`, out]);
 	}
 	return {
 		id: s.id,
@@ -108,7 +152,8 @@ export function sheetToJSON(s: Sheet): SheetJSON {
 		rowHeights: [...s.rowHeights],
 		merges: s.merges.map((m) => ({ ...m })),
 		freeze: { ...s.freeze },
-		filter: s.filter ? structuredClone(s.filter) : undefined
+		filter: s.filter ? structuredClone(s.filter) : undefined,
+		objects: s.objects.length ? structuredClone(s.objects) : undefined
 	};
 }
 
@@ -129,6 +174,7 @@ export function sheetFromJSON(j: SheetJSON): Sheet {
 		merges: j.merges.map((m) => ({ ...m })),
 		freeze: { ...j.freeze },
 		filter: j.filter ? structuredClone(j.filter) : undefined,
+		objects: j.objects ? structuredClone(j.objects) : [],
 		hidden: new Set()
 	};
 }
@@ -206,7 +252,7 @@ export function usedRange(s: Sheet, valuesOnly = false): Range | null {
 	return r2 < 0 ? null : { r1, c1, r2, c2 };
 }
 
-export const hasContent = (c: Cell | undefined) => !!c && (!!c.f || (c.v !== undefined && c.v !== null && c.v !== ''));
+export const hasContent = (c: Cell | undefined) => !!c && (!!c.f || !!c.img || (c.v !== undefined && c.v !== null && c.v !== ''));
 
 /** Merge whose area contains (r, c). */
 export function mergeAt(s: Sheet, r: number, c: number) {

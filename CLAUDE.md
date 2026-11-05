@@ -8,7 +8,7 @@ Implementation plan in `plan.md` (local, gitignored). Phases F0–F9 implemented
 
 - `bun run dev` — Vite dev server (port 5173).
 - `bun run check` — svelte-check; keep 0 errors / 0 warnings.
-- `bun test` — pure logic tests in `tests/` (formulas, engine, refs, ops, CSV, xlsx round trip, docx XML, markdown, search, i18n parity, filters, signature hints) plus `interop.test.ts`: exported .xlsx read by SheetJS (`xlsx`, dev-only), .docx read by mammoth, every XML part validated with `fast-xml-parser`. Svelte rune files (`*.svelte.ts`) can't be imported from Bun tests.
+- `bun test` — pure logic tests in `tests/` (formulas, engine, refs, ops, CSV, xlsx round trip, docx XML, markdown, search, i18n parity, filters, signature hints, chart data, objects + structure, xlsx images and native charts round trip in `xlsx-objects.test.ts`) plus `interop.test.ts`: exported .xlsx read by SheetJS (`xlsx`, dev-only), .docx read by mammoth, every XML part validated with `fast-xml-parser`. Svelte rune files (`*.svelte.ts`) can't be imported from Bun tests.
 - `bun run build` — static site in `build/`. For Pages: `MSYS_NO_PATHCONV=1 BASE_PATH=/mai-docs bun run build` (Git Bash mangles `/mai-docs` without the prefix). CI copies `404.html` → `index.html`.
 - Deploy: `.github/workflows/main.yml` (check, test, build with `BASE_PATH=/<repo>`, push `build/` to `gh-pages`). Bun pinned to 1.4.4 (same as local). Pages must be set to serve the `gh-pages` branch.
 - UI checks: headless Edge driven over CDP (`--remote-debugging-port`), screenshots with `Page.captureScreenshot`. Icons PNGs (`static/icons/*.png`, `static/apple-touch-icon.png`) are rendered from the SVGs that way (transparent background via `Emulation.setDefaultBackgroundColorOverride`); regenerate them if the SVGs change.
@@ -20,6 +20,7 @@ Implementation plan in `plan.md` (local, gitignored). Phases F0–F9 implemented
 - Docs: Tiptap v3 (`@tiptap/core`, no Pro extensions). Extension list in `docs/extensions/index.ts` (`schemaExtensions()` shared by editor, markdown and HTML→JSON). Own extensions: `indent.ts` (paragraph indent attr; Tab/Shift-Tab), `search.ts` (find/replace decorations).
 - Docs I/O: `docx` (export, `docs/io/docx-export.ts`, own JSON→docx serializer), `mammoth` (import, lossy), `@tiptap/markdown` `MarkdownManager` (works without DOM), print = CSS `@media print` + injected `@page`.
 - Sheets: own virtualized DOM grid + own formula engine. `@formulajs/formulajs` only as fallback for functions not implemented in `formula/functions.ts` (its Date results are converted to serials). `exceljs` (xlsx), `papaparse` (CSV), `numfmt` (number formats + locale-aware input parsing).
+- Charts: Chart.js (`charts/render.ts` builds the config from `ChartOptions` + `ChartData`; loaded with `import()`). Palette = dataviz skill reference palette (`PALETTE` in `sheets/charts.ts`, light/dark, fixed order). Marks: 4px rounded bar ends, 2px lines, 8px markers, legend only for >= 2 series. Native Excel charts are written/read by `sheets/io/xlsx-charts.ts` (DrawingML XML into the zip after exceljs; parsed with `fast-xml-parser`).
 - Storage: IndexedDB via `idb` (`storage/db.ts`: stores `files`, `contents`, `blobs`, `handles`). File System Access for open/save in Chromium.
 
 ## Architecture inherited from `../sensei`
@@ -37,6 +38,8 @@ Implementation plan in `plan.md` (local, gitignored). Phases F0–F9 implemented
 - `lib/files/` — `open.ts` (picker/drop/launchQueue → `importFile`; converters in `convert.ts` loaded with `import()`), `save.ts` (handle write / Save As / download), `backup.ts` (library .zip), `create.ts`.
 - `lib/docs/` — `model.ts` (`DocContent {v, page, doc}`), `editor.ts` (image paste/drop → blobs), `io/`.
 - `lib/sheets/` — `addr.ts`, `values.ts` (errors `{e}`, coercion, Excel 1900 date serials), `model.ts` (Workbook/Sheet with Maps keyed `r*16384+c`; `WorkbookContent` JSON), `formula/` (`parse.ts` tokenizer/parser/printer, `eval.ts`, `functions.ts`, `engine.ts`, `refs.ts`), `ops.ts` (cell diffs + structural ops), `book.svelte.ts` (controller: engine, undo history, `rev`), `view.svelte.ts` (selection, editing, clipboard), `actions.ts` (toolbar/context/shortcut commands), `format.ts`, `input.ts`, `filter.ts`, `layout.ts` (`Axis`), `clipboard.ts`, `io/`.
+- Floating objects (`Sheet.objects`: images and charts, `model.ts` `SheetObject`) anchor to a cell + px offset; drawn by `components/sheets/ObjectLayer.svelte` per pane (frozen anchors stay frozen); move/resize commit on pointerup via `book.updateObject` (one undo step). `view.object` = selected object (keyboard: arrows/Delete/Enter, Ctrl+Alt+O cycles); `view.editingChart` opens `charts/ChartPanel.svelte`. Cell images = `Cell.img` (move with the cell). Chart sources are A1 text with sheet prefix and are rewritten like formulas on insert/delete/rename/delete-sheet (`ops.ts` `forEachChart`). Sheet images live in the `blobs` store with `docId` = file id (raw blob ids in the JSON; `pruneBlobs` matches any id substring).
+- Documents: images have `align`/`wrap` attrs (`docs/extensions/image-extras.ts`, styled via `[data-resize-container]:has(img[data-…])`), captions are paragraphs with `caption: true` (docx style `Caption`). Charts are `chart` atom nodes (`docs/extensions/chart-node.ts`, data copied, not linked); the editor uses `ChartNodeWithView` (`components/docs/chart-view.svelte.ts`, Svelte mount) and requests editing with the `mai-edit-chart` DOM event. Exports turn charts into PNG (`renderChartPng`).
 - `components/sheets/Grid.svelte` — native scroll container + sticky viewport with 4 panes (frozen corner/rows/cols/body) translated by scroll; one textarea "sink" handles typing (IME), navigation and clipboard events.
 
 ## Decisions (durable)
@@ -49,7 +52,7 @@ Implementation plan in `plan.md` (local, gitignored). Phases F0–F9 implemented
 - Supported browsers: Chromium (Chrome, Edge) and Firefox. Safari/iOS is not supported (decided 2026-11-05); no Safari-specific work or testing.
 - i18n detection: any `navigator.languages` entry starting with `es` → `es`, else `en`; override `localStorage['mai.lang']`. Theme: `localStorage['mai.theme']`; `data-theme` is always concrete (`light|dark`).
 - Ctrl+S writes back to the remembered handle only for `.docx`/`.xlsx` (other formats would lose formatting); otherwise Save As.
-- Out of scope v1: real-time collaboration, Word-style pagination, charts, comments/track changes, Playwright, backend. Not implemented: bundled Calibri/Cambria-compatible fonts (font names are written as-is).
+- Out of scope: real-time collaboration, Word-style pagination, comments/track changes, Playwright, backend. Not implemented: bundled Calibri/Cambria-compatible fonts (font names are written as-is).
 
 ## Invariants / gotchas
 

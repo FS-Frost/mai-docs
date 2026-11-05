@@ -12,6 +12,7 @@ import {
 	type Cell,
 	type Sheet,
 	type Workbook,
+	type ChartObject,
 	type WorkbookContent
 } from './model.ts';
 
@@ -23,7 +24,7 @@ export function applyCells(sheet: Sheet, changes: CellChange[]): CellChange[] {
 	for (const [k, c] of changes) {
 		const prev = sheet.cells.get(k);
 		inverse.push([k, prev ? { ...prev } : undefined]);
-		if (c && (c.f || (c.v !== undefined && c.v !== null && c.v !== '') || c.s)) sheet.cells.set(k, { ...c });
+		if (c && (c.f || c.img || (c.v !== undefined && c.v !== null && c.v !== '') || c.s)) sheet.cells.set(k, { ...c });
 		else sheet.cells.delete(k);
 	}
 	return inverse.reverse();
@@ -38,6 +39,10 @@ export function restore(wb: Workbook, content: WorkbookContent) {
 }
 
 // ---------- Rows / columns ----------
+
+function forEachChart(wb: Workbook, fn: (s: Sheet, ch: ChartObject) => void) {
+	for (const s of wb.sheets) for (const o of s.objects) if (o.kind === 'chart') fn(s, o);
+}
 
 function forEachFormula(wb: Workbook, fn: (s: Sheet, k: number, c: Cell) => void) {
 	for (const s of wb.sheets) for (const [k, c] of s.cells) if (c.f) fn(s, k, c);
@@ -114,6 +119,22 @@ export function insertOrDelete(wb: Workbook, sheetId: string, axis: 'row' | 'col
 			sheet.filter = { range: r, criteria: crit };
 		}
 	}
+	// Floating objects follow their anchor cell; if it is deleted they move to the first surviving one.
+	const ak = axis === 'row' ? 'r' : 'c';
+	const dk = axis === 'row' ? 'dy' : 'dx';
+	for (const o of sheet.objects) {
+		const i = o.anchor[ak];
+		if (kind === 'insert') {
+			if (i >= at) o.anchor[ak] = i + count;
+		} else if (i >= at && i < at + count) {
+			o.anchor[ak] = at;
+			o.anchor[dk] = 0;
+		} else if (i >= at + count) o.anchor[ak] = i - count;
+	}
+	// Chart sources anywhere are rewritten like formulas.
+	forEachChart(wb, (s, ch) => {
+		ch.source.range = adjustFormula(ch.source.range, s.name, op);
+	});
 	const f = axis === 'row' ? 'rows' : 'cols';
 	if (sheet.freeze[f] > at) sheet.freeze[f] = kind === 'insert' ? sheet.freeze[f] + count : Math.max(at, sheet.freeze[f] - count);
 	const dim = axis === 'row' ? 'rows' : 'cols';
@@ -137,6 +158,10 @@ export function duplicateSheet(wb: Workbook, id: string, name: string) {
 	const copy = sheetFromJSON({ ...structuredClone(j), id: crypto.randomUUID(), name });
 	// Formulas that name their own sheet explicitly should point to the copy.
 	for (const c of copy.cells.values()) if (c.f) c.f = renameSheetInFormula(c.f, src.name, name);
+	for (const o of copy.objects) {
+		o.id = crypto.randomUUID();
+		if (o.kind === 'chart') o.source.range = renameSheetInFormula(o.source.range, src.name, name);
+	}
 	wb.sheets.splice(wb.sheets.indexOf(src) + 1, 0, copy);
 	wb.active = copy.id;
 	return copy;
@@ -149,6 +174,9 @@ export function renameSheet(wb: Workbook, id: string, name: string) {
 	forEachFormula(wb, (_s, _k, c) => {
 		c.f = renameSheetInFormula(c.f!, old, name);
 	});
+	forEachChart(wb, (_s, ch) => {
+		ch.source.range = renameSheetInFormula(ch.source.range, old, name);
+	});
 	s.name = name;
 }
 
@@ -158,6 +186,9 @@ export function deleteSheet(wb: Workbook, id: string) {
 	const [s] = wb.sheets.splice(i, 1);
 	forEachFormula(wb, (_s, _k, c) => {
 		c.f = deleteSheetInFormula(c.f!, s.name);
+	});
+	forEachChart(wb, (_s, ch) => {
+		ch.source.range = deleteSheetInFormula(ch.source.range, s.name);
 	});
 	if (wb.active === id) wb.active = wb.sheets[Math.max(0, i - 1)].id;
 }

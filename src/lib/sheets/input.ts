@@ -49,6 +49,6 @@ export function editText(cell: { v?: Value; f?: string } | undefined, locale: Lo
 		const s = String(Number(v.toPrecision(15)));
 		return locale === 'es' ? s.replace('.', ',') : s;
 	}
-	if (numFmt !== '@' && (v.startsWith('=') || (parseValue(v, { locale }) !== null && v.trim() !== ''))) return `'${v}`;
+	if (numFmt !== '@' && (v.startsWith('=') || (parseValue(v, { locale }) != null && v.trim() !== ''))) return `'${v}`;
 	return v;
 }

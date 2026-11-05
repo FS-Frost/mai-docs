@@ -11,9 +11,12 @@ import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import { Markdown } from '@tiptap/markdown';
 import StarterKit from '@tiptap/starter-kit';
 import { Indent } from './indent.ts';
+import { ImageExtras } from './image-extras.ts';
+import { ChartNode } from './chart-node.ts';
 import { SearchReplace } from './search.ts';
 
-export function schemaExtensions(): AnyExtension[] {
+/** `chart` = node to use for charts (the editor passes one with a node view). */
+export function schemaExtensions(chart: AnyExtension = ChartNode): AnyExtension[] {
 	return [
 		StarterKit.configure({
 			heading: { levels: [1, 2, 3] },
@@ -27,11 +30,13 @@ export function schemaExtensions(): AnyExtension[] {
 		TaskItem.configure({ nested: true }),
 		TableKit.configure({ table: { resizable: true, cellMinWidth: 40 } }),
 		Image.configure({ inline: false, allowBase64: true, resize: { enabled: true, alwaysPreserveAspectRatio: true, minWidth: 32, minHeight: 16 } }),
-		Indent
+		Indent,
+		ImageExtras,
+		chart
 	];
 }
 
 /** Full editor set (adds UI-only extensions). */
-export function editorExtensions(placeholder: string): AnyExtension[] {
-	return [...schemaExtensions(), Markdown, SearchReplace, Placeholder.configure({ placeholder }), CharacterCount];
+export function editorExtensions(placeholder: string, chart?: AnyExtension): AnyExtension[] {
+	return [...schemaExtensions(chart), Markdown, SearchReplace, Placeholder.configure({ placeholder }), CharacterCount];
 }

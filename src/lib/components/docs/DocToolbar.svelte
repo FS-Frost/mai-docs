@@ -3,12 +3,21 @@
 	import type { Editor } from '@tiptap/core';
 	import { promptDialog } from '../../client/dialogs.svelte.ts';
 	import { insertImages } from '../../docs/editor.ts';
+	import { prepareImage } from '../../files/images.ts';
+	import { putBlob, urlFor } from '../../storage/blobs.ts';
 	import { t } from '../../i18n/index.svelte.ts';
 	import ColorPicker from '../ColorPicker.svelte';
 	import Icon, { type IconName } from '../Icon.svelte';
 	import Menu from '../Menu.svelte';
 
-	let { editor, ver, docId, zoom = $bindable(100), onzoom }: { editor: Editor; ver: number; docId: string; zoom?: number; onzoom?: () => void } = $props();
+	let {
+		editor,
+		ver,
+		docId,
+		zoom = $bindable(100),
+		onzoom,
+		oninsertchart
+	}: { editor: Editor; ver: number; docId: string; zoom?: number; onzoom?: () => void; oninsertchart?: (kind: 'sheet' | 'new') => void } = $props();
 
 	const FONTS = ['Arial', 'Calibri', 'Cambria', 'Georgia', 'Times New Roman', 'Verdana', 'Trebuchet MS', 'Courier New'];
 	const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72];
@@ -30,6 +39,27 @@
 	const color = $derived((ts.color as string | undefined) ?? '#000000');
 	const hl = $derived(dep(ver, (editor.getAttributes('highlight').color as string | undefined) ?? 'transparent'));
 	const inTable = $derived(a('table'));
+	const inImage = $derived(a('image'));
+	const imgAttrs = $derived(dep(ver, editor.getAttributes('image')));
+
+	async function editAlt() {
+		const alt = await promptDialog(t().object.altPrompt, (imgAttrs.alt as string | undefined) ?? '');
+		if (alt !== null) chain().setImageAlt(alt).run();
+	}
+
+	function replaceImage() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/*';
+		input.onchange = async () => {
+			const file = input.files?.[0];
+			if (!file) return;
+			const p = await prepareImage(file);
+			const src = await urlFor(await putBlob(docId, p.blob));
+			if (src) chain().updateAttributes('image', { src, width: null, height: null }).run();
+		};
+		input.click();
+	}
 
 	function setStyle(v: string) {
 		if (v === 'p') chain().setParagraph().run();
@@ -172,6 +202,18 @@
 				<div class="my-1 border-t border-line"></div>
 				<button class="menu-item" onclick={() => (close(), chain().addRowBefore().run())}>{t().doc.addRowBefore}</button>
 				<button class="menu-item" onclick={() => (close(), chain().addRowAfter().run())}>{t().doc.addRowAfter}</button>
+	{#if inImage}
+		<span class="tb-sep"></span>
+		<span class="px-1 text-xs text-faint">{t().object.image}</span>
+		{@render btn({ icon: 'alignLeft', label: t().docImage.alignLeft, run: () => chain().setImageAlign('left').run(), active: !imgAttrs.wrap && (!imgAttrs.align || imgAttrs.align === 'left') })}
+		{@render btn({ icon: 'alignCenter', label: t().docImage.alignCenter, run: () => chain().setImageAlign('center').run(), active: imgAttrs.align === 'center' })}
+		{@render btn({ icon: 'alignRight', label: t().docImage.alignRight, run: () => chain().setImageAlign('right').run(), active: imgAttrs.align === 'right' })}
+		{@render btn({ icon: 'wrapLeft', label: t().docImage.wrapLeft, run: () => chain().setImageWrap(imgAttrs.wrap === 'left' ? 'inline' : 'left').run(), active: imgAttrs.wrap === 'left' })}
+		{@render btn({ icon: 'wrapRight', label: t().docImage.wrapRight, run: () => chain().setImageWrap(imgAttrs.wrap === 'right' ? 'inline' : 'right').run(), active: imgAttrs.wrap === 'right' })}
+		{@render btn({ icon: 'caption', label: t().docImage.caption, run: () => chain().addImageCaption(t().docImage.captionPlaceholder).run() })}
+		<button class="tb px-2 text-xs font-medium" title={t().object.alt} aria-label={t().object.alt} onmousedown={(e) => e.preventDefault()} onclick={editAlt}>ALT</button>
+		{@render btn({ icon: 'restore', label: t().docImage.replace, run: replaceImage })}
+	{/if}
 				<button class="menu-item" onclick={() => (close(), chain().deleteRow().run())}>{t().doc.deleteRow}</button>
 				<button class="menu-item" onclick={() => (close(), chain().addColumnBefore().run())}>{t().doc.addColBefore}</button>
 				<button class="menu-item" onclick={() => (close(), chain().addColumnAfter().run())}>{t().doc.addColAfter}</button>
@@ -190,6 +232,9 @@
 			<button class="menu-item" onclick={() => (close(), chain().toggleCode().run())}><Icon name="code" size={16} />{t().doc.code}</button>
 			<button class="menu-item" onclick={() => (close(), chain().toggleCodeBlock().run())}><Icon name="code" size={16} />{t().doc.codeBlock}</button>
 			<button class="menu-item" onclick={() => (close(), chain().setHorizontalRule().run())}><Icon name="hr" size={16} />{t().doc.hr}</button>
+			<div class="my-1 border-t border-line"></div>
+			<button class="menu-item" onclick={() => (close(), oninsertchart?.('sheet'))}><Icon name="chart" size={16} />{t().chart.fromSheet}</button>
+			<button class="menu-item" onclick={() => (close(), oninsertchart?.('new'))}><Icon name="chart" size={16} />{t().chart.newData}</button>
 		{/snippet}
 	</Menu>
 	{@render btn({ icon: 'clear', label: t().doc.clearFormat, run: () => chain().unsetAllMarks().clearNodes().run() })}

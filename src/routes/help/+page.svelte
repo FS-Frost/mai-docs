@@ -25,6 +25,8 @@
 		['Delete / Backspace', k.clear],
 		[`${mod}+C / X / V`, k.copy],
 		[`${mod}+A`, k.selectAll],
+		[`${mod}+Alt+O`, k.objects],
+		['← ↑ → ↓ / Delete / Enter', k.objectMove],
 		[`${mod}+B / I / U`, k.bold]
 	]);
 </script>

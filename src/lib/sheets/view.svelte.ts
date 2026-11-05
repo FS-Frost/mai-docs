@@ -5,7 +5,7 @@ import { a1, cellKey, colName, keyCol, keyRow, MAX_COLS, MAX_ROWS, norm, parseA1
 import type { Book } from './book.svelte.ts';
 import { parseHTMLTable, parseTSV, toHTML, toTSV } from './clipboard.ts';
 import { editText } from './input.ts';
-import { hasContent, styleOf, type Cell, type CellStyle, type Sheet } from './model.ts';
+import { hasContent, styleOf, type Cell, type CellStyle, type Sheet, type SheetObject } from './model.ts';
 
 export type Pos = { r: number; c: number };
 export type EditState = { text: string; r: number; c: number; sheetId: string; mode: 'enter' | 'edit'; from: 'cell' | 'bar' };
@@ -26,7 +26,16 @@ export class SheetView {
 	/** Formula reference picking while editing (range being dragged). */
 	pick = $state<Range | null>(null);
 
-	constructor(public book: Book) {}
+	/** Selected floating object (image/chart) id; while set, the keyboard acts on it. */
+	object = $state<string | null>(null);
+	/** Chart editor panel open for this object id. */
+	editingChart = $state<string | null>(null);
+	objClip: SheetObject | null = null;
+
+	constructor(
+		public book: Book,
+		public fileId = ''
+	) {}
 
 	get sheet(): Sheet {
 		return this.book.active;

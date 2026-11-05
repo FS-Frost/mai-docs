@@ -134,3 +134,30 @@ describe('search', () => {
 		expect(doc.textBetween(m[1].from, m[1].to)).toBe('cat');
 	});
 });
+
+describe('docx image layout', () => {
+	test('alignment, wrapping, alt text and captions', async () => {
+		const doc = await buildDocx(
+			{
+				type: 'doc',
+				content: [
+					{ type: 'image', attrs: { src: 'mai-blob:a', align: 'center', alt: 'Logo azul' } },
+					{ type: 'paragraph', attrs: { caption: true, textAlign: 'center' }, content: [{ type: 'text', text: 'Figura 1' }] },
+					{ type: 'paragraph', content: [{ type: 'image', attrs: { src: 'mai-blob:b', wrap: 'left' } }, { type: 'text', text: 'texto alrededor' }] },
+					{ type: 'image', attrs: { src: 'mai-blob:c', wrap: 'right' } }
+				]
+			},
+			defaultPage('es'),
+			async () => ({ data: PNG, type: 'png', width: 10, height: 10 })
+		);
+		const files = unzipSync(new Uint8Array(await docxBytes(doc)));
+		const xml = strFromU8(files['word/document.xml']);
+		expect(xml).toContain('descr="Logo azul"');
+		expect(xml).toContain('<w:jc w:val="center"/>');
+		expect(xml).toContain('<w:pStyle w:val="Caption"/>');
+		expect(xml).toContain('<wp:anchor');
+		expect(xml).toContain('<wp:wrapSquare');
+		expect(xml).toContain('<wp:align>right</wp:align>');
+		expect(strFromU8(files['word/styles.xml'])).toContain('w:styleId="Caption"');
+	});
+});

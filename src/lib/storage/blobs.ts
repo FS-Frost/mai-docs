@@ -68,7 +68,7 @@ export function dehydrate<T>(json: T): T {
 export async function pruneBlobs(docId: string, json: unknown) {
 	const text = JSON.stringify(json);
 	const d = await db();
-	for (const b of await blobsOf(docId)) if (!text.includes(BLOB_PREFIX + b.id)) await d.delete('blobs', b.id);
+	for (const b of await blobsOf(docId)) if (!text.includes(b.id)) await d.delete('blobs', b.id);
 }
 
 /** For exports: blob: or mai-blob: src → Blob. */

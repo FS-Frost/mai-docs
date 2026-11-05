@@ -20,6 +20,7 @@ import {
 	type Filter,
 	type FilterCriterion,
 	type Sheet,
+	type SheetObject,
 	type Workbook,
 	type WorkbookContent
 } from './model.ts';
@@ -345,6 +346,47 @@ export class Book {
 			(x, v) => (x.merges = v),
 			kept
 		);
+	}
+
+	// ---------- Floating objects (images, charts) ----------
+
+	private setObjects(sheetId: string, next: SheetObject[]) {
+		this.meta(
+			sheetId,
+			(x) => x.objects,
+			(x, v) => (x.objects = v),
+			next
+		);
+	}
+
+	object(sheetId: string, id: string) {
+		return this.sheet(sheetId)?.objects.find((o) => o.id === id);
+	}
+
+	addObject(sheetId: string, obj: SheetObject) {
+		const s = this.sheet(sheetId);
+		if (s) this.setObjects(sheetId, [...s.objects, obj]);
+	}
+
+	updateObject(sheetId: string, id: string, patch: Partial<SheetObject>) {
+		const s = this.sheet(sheetId);
+		if (!s) return;
+		this.setObjects(
+			sheetId,
+			s.objects.map((o) => (o.id === id ? ({ ...o, ...patch } as SheetObject) : o))
+		);
+	}
+
+	removeObject(sheetId: string, id: string) {
+		const s = this.sheet(sheetId);
+		if (s) this.setObjects(sheetId, s.objects.filter((o) => o.id !== id));
+	}
+
+	/** Moves an object to the end (drawn on top). */
+	bringToFront(sheetId: string, id: string) {
+		const s = this.sheet(sheetId);
+		const o = s?.objects.find((x) => x.id === id);
+		if (s && o) this.setObjects(sheetId, [...s.objects.filter((x) => x.id !== id), o]);
 	}
 
 	/** Groups several recorded changes into one undo step. */

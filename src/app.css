@@ -347,3 +347,55 @@ body {
 		break-inside: avoid;
 	}
 }
+
+/* ---------- Document images: alignment, wrap, captions, resize handles ---------- */
+.paper .ProseMirror [data-resize-container]:has(img[data-align='center']) {
+	justify-content: center;
+}
+.paper .ProseMirror [data-resize-container]:has(img[data-align='right']) {
+	justify-content: flex-end;
+}
+.paper .ProseMirror [data-resize-container]:has(img[data-wrap='left']) {
+	display: block !important;
+	float: left;
+	margin: 0.2em 1em 0.5em 0;
+}
+.paper .ProseMirror [data-resize-container]:has(img[data-wrap='right']) {
+	display: block !important;
+	float: right;
+	margin: 0.2em 0 0.5em 1em;
+}
+.paper .ProseMirror h1,
+.paper .ProseMirror h2,
+.paper .ProseMirror h3,
+.paper .ProseMirror table {
+	clear: both;
+}
+.paper .ProseMirror p.caption {
+	font-size: 0.85em;
+	font-style: italic;
+	color: #555;
+	margin-top: 0.2em;
+}
+.paper .ProseMirror [data-resize-handle] {
+	width: 10px;
+	height: 10px;
+	margin: -5px;
+	border-radius: 50%;
+	background: #3b5bdb;
+	border: 2px solid #fff;
+	opacity: 0;
+	z-index: 2;
+}
+.paper .ProseMirror [data-resize-container].ProseMirror-selectednode [data-resize-handle],
+.paper .ProseMirror [data-resize-container]:hover [data-resize-handle] {
+	opacity: 1;
+}
+.paper .ProseMirror [data-resize-handle='top-left'],
+.paper .ProseMirror [data-resize-handle='bottom-right'] {
+	cursor: nwse-resize;
+}
+.paper .ProseMirror [data-resize-handle='top-right'],
+.paper .ProseMirror [data-resize-handle='bottom-left'] {
+	cursor: nesw-resize;
+}

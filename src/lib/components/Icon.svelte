@@ -77,7 +77,11 @@
 		rowAdd: 'M3 5h18v6H3z M12 15v6 M9 18h6',
 		colAdd: 'M5 3h6v18H5z M15 12h6 M18 9v6',
 		zoom: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M20 20l-4-4 M8 11h6 M11 8v6',
-		keyboard: 'M3 6h18v12H3z M7 10h.01 M11 10h.01 M15 10h.01 M7 14h10'
+		keyboard: 'M3 6h18v12H3z M7 10h.01 M11 10h.01 M15 10h.01 M7 14h10',
+		chart: 'M3 20h18 M6 20v-7 M11 20V5 M16 20v-10 M21 20v-4',
+		wrapLeft: 'M3 5h8v8H3z M15 6h6 M15 10h6 M15 14h6 M3 18h18',
+		wrapRight: 'M13 5h8v8h-8z M3 6h6 M3 10h6 M3 14h6 M3 18h18',
+		caption: 'M4 4h16v11H4z M8 19h8'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>

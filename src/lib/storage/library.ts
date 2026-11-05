@@ -106,14 +106,14 @@ export async function duplicateFile(id: string, title: string) {
 	if (!meta || content === undefined) return;
 	const newId = uid();
 	let copy = content;
-	if (meta.kind === 'doc') {
-		// Images belong to a document: copy them with new ids and rewrite the references.
+	{
+		// Images belong to a file (doc or sheet): copy them with new ids and rewrite the references (ids are UUIDs).
 		const blobs = await d.getAllFromIndex('blobs', 'docId', id);
 		let json = JSON.stringify(content);
 		for (const b of blobs) {
 			const nb = uid();
 			await d.put('blobs', { ...b, id: nb, docId: newId });
-			json = json.split(`mai-blob:${b.id}`).join(`mai-blob:${nb}`);
+			json = json.split(b.id).join(nb);
 		}
 		copy = JSON.parse(json);
 	}

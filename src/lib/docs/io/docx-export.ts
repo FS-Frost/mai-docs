@@ -7,6 +7,11 @@ import {
 	Document,
 	ExternalHyperlink,
 	HeadingLevel,
+	HorizontalPositionAlign,
+	HorizontalPositionRelativeFrom,
+	TextWrappingSide,
+	TextWrappingType,
+	VerticalPositionRelativeFrom,
 	ImageRun,
 	LevelFormat,
 	Packer,
@@ -75,7 +80,8 @@ const ALIGN: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> 
 
 const HEADING = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3];
 
-type Ctx = { getImage: ImageLoader; listInstance: number; contentWidthPx: number };
+export type ChartLoader = (attrs: Record<string, unknown>) => Promise<DocxImage | null>;
+type Ctx = { getImage: ImageLoader; getChart?: ChartLoader; listInstance: number; contentWidthPx: number };
 
 function runOptions(marks: Marks | undefined, extra: Partial<IRunOptions> = {}): IRunOptions {
 	const o: Record<string, unknown> = { ...extra };
@@ -148,7 +154,23 @@ async function imageRun(n: JSONContent, ctx: Ctx) {
 		h = (h * ctx.contentWidthPx) / w;
 		w = ctx.contentWidthPx;
 	}
-	return new ImageRun({ type: img.type, data: img.data, transformation: { width: Math.round(w), height: Math.round(h) } } as ConstructorParameters<typeof ImageRun>[0]);
+	const alt = String(n.attrs?.alt ?? '');
+	const wrap = n.attrs?.wrap as 'left' | 'right' | null | undefined;
+	const floating = wrap
+		? {
+				horizontalPosition: { relative: HorizontalPositionRelativeFrom.COLUMN, align: wrap === 'left' ? HorizontalPositionAlign.LEFT : HorizontalPositionAlign.RIGHT },
+				verticalPosition: { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: 0 },
+				wrap: { type: TextWrappingType.SQUARE, side: TextWrappingSide.BOTH_SIDES },
+				margins: wrap === 'left' ? { right: 114300, bottom: 57150 } : { left: 114300, bottom: 57150 }
+			}
+		: undefined;
+	return new ImageRun({
+		type: img.type,
+		data: img.data,
+		transformation: { width: Math.round(w), height: Math.round(h) },
+		altText: alt ? { name: alt, description: alt, title: alt } : undefined,
+		floating
+	} as ConstructorParameters<typeof ImageRun>[0]);
 }
 
 function paraBase(n: JSONContent): Partial<IParagraphOptions> {
@@ -171,7 +193,7 @@ async function blocks(nodes: JSONContent[] | undefined, ctx: Ctx, list?: { kind:
 async function block(n: JSONContent, ctx: Ctx, list?: { kind: 'bullet' | 'ordered'; level: number; instance: number }): Promise<Block[]> {
 	switch (n.type) {
 		case 'paragraph': {
-			const o: IParagraphOptions = { ...paraBase(n), children: await inline(n.content, ctx) };
+			const o: IParagraphOptions = { ...paraBase(n), style: n.attrs?.caption ? 'Caption' : undefined, children: await inline(n.content, ctx) };
 			return [new Paragraph(o)];
 		}
 		case 'heading': {
@@ -208,7 +230,8 @@ async function block(n: JSONContent, ctx: Ctx, list?: { kind: 'bullet' | 'ordere
 			return [new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'AAAAAA', space: 1 } }, children: [] })];
 		case 'image': {
 			const img = await imageRun(n, ctx);
-			return img ? [new Paragraph({ children: [img] })] : [];
+			const align = n.attrs?.align as string | undefined;
+			return img ? [new Paragraph({ alignment: align && !n.attrs?.wrap ? ALIGN[align] : undefined, children: [img] })] : [];
 		}
 		case 'bulletList':
 		case 'orderedList': {
@@ -237,6 +260,13 @@ async function block(n: JSONContent, ctx: Ctx, list?: { kind: 'bullet' | 'ordere
 		}
 		case 'table':
 			return [await table(n, ctx)];
+		case 'chart': {
+			// Charts go to Word as PNG images rendered by the caller (Chart.js needs a canvas).
+			const img = await ctx.getChart?.(n.attrs ?? {});
+			if (!img) return [];
+			const s = Math.min(1, ctx.contentWidthPx / img.width);
+			return [new Paragraph({ children: [new ImageRun({ type: img.type, data: img.data, transformation: { width: Math.round(img.width * s), height: Math.round(img.height * s) } } as ConstructorParameters<typeof ImageRun>[0])] })];
+		}
 		default:
 			return n.content ? blocks(n.content, ctx, list) : [];
 	}
@@ -301,10 +331,10 @@ async function table(n: JSONContent, ctx: Ctx): Promise<Table> {
 	return new Table({ rows, columnWidths: twips, width: { size: twips.reduce((a, b) => a + b, 0), type: WidthType.DXA } });
 }
 
-export async function buildDocx(doc: JSONContent, page: PageSetup, getImage: ImageLoader, title = ''): Promise<Document> {
+export async function buildDocx(doc: JSONContent, page: PageSetup, getImage: ImageLoader, title = '', getChart?: ChartLoader): Promise<Document> {
 	const dims = pageDims(page);
 	const contentWidthPx = ((dims.w - page.margins.left - page.margins.right) / 25.4) * 96;
-	const ctx: Ctx = { getImage, listInstance: 0, contentWidthPx };
+	const ctx: Ctx = { getImage, getChart, listInstance: 0, contentWidthPx };
 	const children = await blocks(doc.content, ctx);
 	const twip = (mm: number) => Math.round((mm / 25.4) * 1440);
 	const [pw, ph] = [twip(dims.w), twip(dims.h)];
@@ -316,7 +346,8 @@ export async function buildDocx(doc: JSONContent, page: PageSetup, getImage: Ima
 			paragraphStyles: [
 				{ id: 'Heading1', name: 'Heading 1', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 40, bold: true }, paragraph: { spacing: { before: 240, after: 120 } } },
 				{ id: 'Heading2', name: 'Heading 2', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 32, bold: true }, paragraph: { spacing: { before: 200, after: 100 } } },
-				{ id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 26, bold: true }, paragraph: { spacing: { before: 160, after: 80 } } }
+				{ id: 'Heading3', name: 'Heading 3', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 26, bold: true }, paragraph: { spacing: { before: 160, after: 80 } } },
+				{ id: 'Caption', name: 'Caption', basedOn: 'Normal', next: 'Normal', quickFormat: true, run: { size: 18, italics: true, color: '555555' }, paragraph: { spacing: { before: 40, after: 120 } } }
 			],
 			characterStyles: [{ id: 'Hyperlink', name: 'Hyperlink', basedOn: 'DefaultParagraphFont', run: { color: '1A56C4', underline: {} } }]
 		},
