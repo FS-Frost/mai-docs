@@ -21,6 +21,7 @@
 	--color-info: var(--c-info);
 	--color-doc: var(--c-doc);
 	--color-sheet: var(--c-sheet);
+	--color-slides: var(--c-slides);
 	--color-grid: var(--c-grid);
 	--color-grid-head: var(--c-grid-head);
 	--color-grid-head-active: var(--c-grid-head-active);
@@ -47,6 +48,7 @@
 	--c-info: #2b6cb8;
 	--c-doc: #2f6fde;
 	--c-sheet: #1b8a4b;
+	--c-slides: #d9480f;
 	--c-grid: #e1e3e8;
 	--c-grid-head: #f3f4f7;
 	--c-grid-head-active: #dbe3fb;
@@ -71,6 +73,7 @@
 	--c-info: #6aa6e8;
 	--c-doc: #6c9cf0;
 	--c-sheet: #4cbf7c;
+	--c-slides: #f08c4a;
 	--c-grid: #30343d;
 	--c-grid-head: #22252c;
 	--c-grid-head-active: #2c3657;
@@ -398,4 +401,52 @@ body {
 .paper .ProseMirror [data-resize-handle='top-right'],
 .paper .ProseMirror [data-resize-handle='bottom-left'] {
 	cursor: nesw-resize;
+}
+
+/* ---------- Slides: rich text inside shapes ---------- */
+.slide-text,
+.slide-editor .ProseMirror {
+	line-height: 1.2;
+	overflow-wrap: break-word;
+	white-space: pre-wrap;
+}
+.slide-text p,
+.slide-editor .ProseMirror p {
+	margin: 0;
+}
+.slide-text ul,
+.slide-editor .ProseMirror ul {
+	list-style: disc;
+	padding-left: 1.1em;
+	margin: 0;
+}
+.slide-text ol,
+.slide-editor .ProseMirror ol {
+	list-style: decimal;
+	padding-left: 1.3em;
+	margin: 0;
+}
+.slide-text ul ul,
+.slide-editor .ProseMirror ul ul {
+	list-style: '– ';
+}
+.slide-text li > p + *,
+.slide-text li + li,
+.slide-editor .ProseMirror li + li {
+	margin-top: 0.25em;
+}
+.slide-editor .ProseMirror {
+	outline: none;
+	min-height: 1em;
+}
+.slide-text mark,
+.slide-editor .ProseMirror mark {
+	color: inherit;
+}
+.slide-editor .ProseMirror p.is-editor-empty:first-child::before {
+	content: attr(data-placeholder);
+	opacity: 0.45;
+	float: left;
+	height: 0;
+	pointer-events: none;
 }

@@ -10,10 +10,10 @@
 	import { confirmDialog, promptDialog } from '#lib/client/dialogs.svelte.ts';
 	import { deleteForever, duplicateFile, emptyTrash, listFiles, onLibraryChange, renameFile, restoreFile, trashFile, type FileMeta } from '#lib/storage/library.ts';
 	import { importFile, isSupported, pickFiles } from '#lib/files/open.ts';
-	import { newDocument, newSpreadsheet } from '#lib/files/create.ts';
+	import { fileRoute, newOfKind } from '#lib/files/create.ts';
 	import { formatBytes } from '#lib/i18n/index.svelte.ts';
 
-	type Tab = 'all' | 'doc' | 'sheet' | 'trash';
+	type Tab = 'all' | 'doc' | 'sheet' | 'slides' | 'trash';
 	type Sort = 'updated' | 'title' | 'created';
 
 	let files = $state<FileMeta[]>([]);
@@ -59,11 +59,12 @@
 	});
 	const trashCount = $derived(files.filter((f) => f.trashedAt).length);
 
-	const href = (f: FileMeta) => withBase(f.kind === 'doc' ? `/docs/${f.id}` : `/sheets/${f.id}`);
+	const href = (f: FileMeta) => withBase(fileRoute(f.kind, f.id));
+	const KIND_CLASS = { doc: 'bg-doc/12 text-doc', sheet: 'bg-sheet/12 text-sheet', slides: 'bg-slides/12 text-slides' } as const;
 
-	async function create(kind: 'doc' | 'sheet') {
-		const meta = kind === 'doc' ? await newDocument() : await newSpreadsheet();
-		await goto(kind === 'doc' ? `/docs/${meta.id}` : `/sheets/${meta.id}`);
+	async function create(kind: 'doc' | 'sheet' | 'slides') {
+		const meta = await newOfKind(kind);
+		await goto(fileRoute(kind, meta.id));
 	}
 
 	async function openFiles(list: { file: File; handle?: FileSystemFileHandle }[]) {
@@ -85,7 +86,7 @@
 			}
 		}
 		busy = false;
-		if (last && list.length === 1) await goto(last.kind === 'doc' ? `/docs/${last.id}` : `/sheets/${last.id}`);
+		if (last && list.length === 1) await goto(fileRoute(last.kind, last.id));
 		else if (last) toast.success(t().library.imported(last.title));
 	}
 
@@ -118,6 +119,7 @@
 		{ id: 'all' as Tab, label: t().library.filterAll },
 		{ id: 'doc' as Tab, label: t().library.filterDocs },
 		{ id: 'sheet' as Tab, label: t().library.filterSheets },
+		{ id: 'slides' as Tab, label: t().library.filterSlides },
 		{ id: 'trash' as Tab, label: t().library.trash }
 	]);
 </script>
@@ -134,7 +136,7 @@
 <AppHeader />
 
 <main class="mx-auto max-w-6xl px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
-	<section class="mb-6 grid gap-3 sm:grid-cols-3">
+	<section class="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 		<button class="group flex items-center gap-3 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-doc hover:shadow-md" onclick={() => create('doc')}>
 			<span class="grid size-11 place-items-center rounded-lg bg-doc/12 text-doc"><Icon name="doc" size={24} /></span>
 			<span class="font-medium">{t().library.newDoc}</span>
@@ -142,6 +144,10 @@
 		<button class="group flex items-center gap-3 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-sheet hover:shadow-md" onclick={() => create('sheet')}>
 			<span class="grid size-11 place-items-center rounded-lg bg-sheet/12 text-sheet"><Icon name="sheet" size={24} /></span>
 			<span class="font-medium">{t().library.newSheet}</span>
+		</button>
+		<button class="group flex items-center gap-3 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-slides hover:shadow-md" onclick={() => create('slides')}>
+			<span class="grid size-11 place-items-center rounded-lg bg-slides/12 text-slides"><Icon name="slides" size={24} /></span>
+			<span class="font-medium">{t().library.newSlides}</span>
 		</button>
 		<button class="group flex items-center gap-3 rounded-xl border border-dashed border-line bg-surface p-4 text-left transition hover:border-accent hover:shadow-md disabled:opacity-60" disabled={busy} onclick={async () => openFiles(await pickFiles())}>
 			<span class="grid size-11 place-items-center rounded-lg bg-accent-soft text-accent"><Icon name="open" size={24} /></span>
@@ -186,8 +192,8 @@
 		<ul class="divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface">
 			{#each shown as f (f.id)}
 				<li class="flex items-center gap-3 px-3 py-2.5 hover:bg-surface-2/60">
-					<span class="grid size-9 shrink-0 place-items-center rounded-md {f.kind === 'doc' ? 'bg-doc/12 text-doc' : 'bg-sheet/12 text-sheet'}">
-						<Icon name={f.kind === 'doc' ? 'doc' : 'sheet'} />
+					<span class="grid size-9 shrink-0 place-items-center rounded-md {KIND_CLASS[f.kind]}">
+						<Icon name={f.kind} />
 					</span>
 					{#if f.trashedAt}
 						<span class="min-w-0 flex-1">

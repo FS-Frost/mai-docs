@@ -16,7 +16,7 @@
 		actions
 	}: {
 		title: string;
-		kind: 'doc' | 'sheet';
+		kind: 'doc' | 'sheet' | 'slides';
 		status: SaveStatus;
 		readonly?: boolean;
 		onrename: (t: string) => void;
@@ -45,8 +45,8 @@
 <header class="no-print border-b border-line bg-surface pt-[env(safe-area-inset-top)]">
 	<div class="flex h-12 items-center gap-2 px-2 sm:px-3">
 		<a href={withBase('/')} class="tb" title={t().file.backToLibrary} aria-label={t().file.backToLibrary}><Icon name="back" /></a>
-		<span class="grid size-8 shrink-0 place-items-center rounded-md {kind === 'doc' ? 'bg-doc/12 text-doc' : 'bg-sheet/12 text-sheet'}">
-			<Icon name={kind === 'doc' ? 'doc' : 'sheet'} size={18} />
+		<span class="grid size-8 shrink-0 place-items-center rounded-md {kind === 'doc' ? 'bg-doc/12 text-doc' : kind === 'sheet' ? 'bg-sheet/12 text-sheet' : 'bg-slides/12 text-slides'}">
+			<Icon name={kind} size={18} />
 		</span>
 		<input
 			class="min-w-0 flex-1 truncate rounded border border-transparent bg-transparent px-1.5 py-1 text-[0.95rem] font-medium outline-none hover:border-line focus:border-accent sm:max-w-md"

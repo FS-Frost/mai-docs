@@ -1,19 +1,20 @@
 # Mai Docs
 
-Editores ligeros de **documentos** y **hojas de cálculo** que corren completamente en el navegador. Es una PWA instalable que funciona sin conexión y guarda todo localmente. No tiene servidor ni cuentas.
+Editores ligeros de **documentos**, **hojas de cálculo** y **presentaciones** que corren completamente en el navegador. Es una PWA instalable que funciona sin conexión y guarda todo localmente. No tiene servidor ni cuentas.
 
-Lightweight **documents** and **spreadsheets** editors that run entirely in the browser. It is an installable PWA that works offline and stores everything locally. No server, no accounts.
+Lightweight **documents**, **spreadsheets** and **presentations** editors that run entirely in the browser. It is an installable PWA that works offline and stores everything locally. No server, no accounts.
 
 ## Funciones
 
 - **Documentos**: imágenes con alineación, texto alrededor, pie y texto alternativo; gráficos copiados desde una hoja; formato de texto (fuente, tamaño, color, resaltado), títulos, listas, listas de tareas, sangría, alineación, enlaces, tablas (combinar celdas, encabezados), imágenes (pegar o arrastrar, redimensionar), citas, código, tamaño de página y márgenes, buscar y reemplazar, conteo de palabras. Importa `.docx`, `.md`, `.html` y `.txt`; exporta `.docx`, `.md`, `.html` y `.txt`; PDF al imprimir.
 - **Hojas de cálculo**: gráficos (columnas, barras, líneas, área, torta, anillo, dispersión; apilados) que se actualizan con los datos y se exportan como gráficos nativos de Excel, imágenes flotantes y dentro de celdas, varias hojas, ~400 funciones (nombres en inglés con `,`: `=SUM(A1:A3)`, `=VLOOKUP(A2,Hoja2!A:B,2,FALSE)`), referencias entre hojas, recálculo incremental, formato de celda (fuente, colores, bordes, alineación, ajuste de texto), formatos numéricos (moneda, %, fecha…), combinar celdas, inmovilizar filas y columnas, ordenar, autofiltro, rellenar arrastrando, copiar y pegar con Excel/Google Sheets, deshacer/rehacer. Importa y exporta `.xlsx` y `.csv`.
-- Biblioteca local con autoguardado (IndexedDB), papelera y copia de seguridad en `.zip`. En Chromium también abre y guarda archivos del disco (Ctrl+S escribe sobre el `.docx`/`.xlsx` original).
+- **Presentaciones**: diapositivas con layouts (título, título y contenido, sección, dos columnas…), cajas de texto enriquecido, 15 formas, imágenes; mover, redimensionar y rotar con guías de alineación, alinear y distribuir; 8 temas con colores y fuentes editables, 16:9 o 4:3; notas del orador; modo presentación en pantalla completa con vista de orador en otra ventana (notas, temporizador, siguiente diapositiva). Exporta `.pptx` y PDF.
+- Biblioteca local con autoguardado (IndexedDB), papelera y copia de seguridad en `.zip`. En Chromium también abre y guarda archivos del disco (Ctrl+S escribe sobre el `.docx`/`.xlsx`/`.pptx` original).
 - Interfaz en español o inglés según el idioma del sistema, con selector manual. Tema claro, oscuro o del sistema.
 
 Navegadores soportados: Chrome, Edge y Firefox (Safari no se soporta).
 
-Limitaciones: sin colaboración en tiempo real, sin paginación tipo Word; al importar `.docx` se pierden encabezados/pies de página y estilos complejos; al importar `.xlsx` se pierden validaciones y formato condicional, y los gráficos con opciones avanzadas se simplifican.
+Limitaciones: sin colaboración en tiempo real, sin paginación tipo Word; al importar `.docx` se pierden encabezados/pies de página y estilos complejos; al importar `.xlsx` se pierden validaciones y formato condicional, y los gráficos con opciones avanzadas se simplifican. Las presentaciones aún no importan `.pptx` ni tienen tablas, gráficos, video ni animaciones (próximas etapas).
 
 ## Stack
 

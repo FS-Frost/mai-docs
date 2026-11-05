@@ -11,3 +11,14 @@ export async function newDocument() {
 export async function newSpreadsheet() {
 	return createFile('sheet', t().library.untitledSheet, toContent(newWorkbook(t().sheet.sheetName(1))));
 }
+
+export async function newPresentation() {
+	const { newDeckContent } = await import('../slides/deck.svelte.ts');
+	const { themeById } = await import('../slides/themes.ts');
+	return createFile('slides', t().library.untitledSlides, newDeckContent(themeById('simple')));
+}
+
+/** App route of a library file. */
+export const fileRoute = (kind: 'doc' | 'sheet' | 'slides', id: string) => (kind === 'doc' ? `/docs/${id}` : kind === 'sheet' ? `/sheets/${id}` : `/slides/${id}`);
+
+export const newOfKind = (kind: 'doc' | 'sheet' | 'slides') => (kind === 'doc' ? newDocument() : kind === 'sheet' ? newSpreadsheet() : newPresentation());

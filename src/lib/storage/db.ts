@@ -2,7 +2,7 @@
 // document images in `blobs`, File System Access handles in `handles` (Chromium only).
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
-export type Kind = 'doc' | 'sheet';
+export type Kind = 'doc' | 'sheet' | 'slides';
 
 export type FileMeta = {
 	id: string;

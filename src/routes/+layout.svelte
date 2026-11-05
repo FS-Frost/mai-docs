@@ -12,6 +12,7 @@
 	import { toast } from '#lib/client/toast.svelte.ts';
 	import { importFile, isSupported } from '#lib/files/open.ts';
 	import { goto } from '#lib/client/nav.ts';
+	import { fileRoute } from '#lib/files/create.ts';
 
 	let { children }: LayoutProps = $props();
 
@@ -28,7 +29,7 @@
 		// Opened from the OS ("Open with Mai Docs", manifest file_handlers, Chromium).
 		window.launchQueue?.setConsumer(async ({ files }) => {
 			let last: string | null = null;
-			let kind: 'doc' | 'sheet' = 'doc';
+			let kind: 'doc' | 'sheet' | 'slides' = 'doc';
 			for (const h of files) {
 				try {
 					const file = await h.getFile();
@@ -44,7 +45,7 @@
 					toast.error(t().library.openFailed, { detail: String((e as Error)?.message ?? e) });
 				}
 			}
-			if (last) void goto(kind === 'doc' ? `/docs/${last}` : `/sheets/${last}`);
+			if (last) void goto(fileRoute(kind, last));
 		});
 		return () => {
 			removeEventListener('offline', offline);
