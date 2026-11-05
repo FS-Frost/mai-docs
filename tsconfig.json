@@ -1,0 +1,9 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"types": ["$app/types", "bun"]
+	},
+	"include": ["src", "tests", "vite.config.ts"],
+	"exclude": ["node_modules", "build", ".svelte-kit", "src/service-worker.ts"]
+}

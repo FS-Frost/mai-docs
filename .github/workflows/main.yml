@@ -1,0 +1,51 @@
+name: Deploy to GitHub Pages
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+jobs:
+    test-build-deploy:
+        runs-on: ubuntu-latest
+        # Publishes to the gh-pages branch with the workflow token.
+        permissions:
+            contents: write
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            # Pinned Bun (same as local development): a new release must not break deploys silently.
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: 1.4.4
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Type check
+              run: bun run check
+
+            - name: Run tests
+              run: bun test
+
+            # Site base: /<repo> (or empty for <user>.github.io repos).
+            - name: Build
+              run: |
+                  REPO="${{ github.event.repository.name }}"
+                  if [[ "$REPO" == *.github.io ]]; then export BASE_PATH=""; else export BASE_PATH="/$REPO"; fi
+                  bun run build
+
+            # SPA: index.html for the root and 404.html for every deep route.
+            - name: SPA entry points
+              run: cp build/404.html build/index.html
+
+            - name: Generate .nojekyll
+              run: echo "" > build/.nojekyll
+
+            - name: Deploy
+              uses: JamesIves/github-pages-deploy-action@v4
+              with:
+                  branch: gh-pages
+                  folder: build
