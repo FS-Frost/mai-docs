@@ -1,0 +1,1 @@
+var e={A4:[210,297],Letter:[215.9,279.4],Legal:[215.9,355.6]},t=e=>({size:e===`es`?`A4`:`Letter`,orientation:`portrait`,margins:{top:25.4,right:25.4,bottom:25.4,left:25.4}}),n=()=>({type:`doc`,content:[{type:`paragraph`}]}),r=(e,r=n())=>({v:1,page:t(e),doc:r});function i(t){let[n,r]=e[t.size];return t.orientation===`portrait`?{w:n,h:r}:{w:r,h:n}}export{i as n,r as t};

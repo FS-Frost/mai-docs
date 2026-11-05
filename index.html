@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="theme-color" content="#ffffff" />
+		<script>
+			// Before paint: concrete theme (light/dark) and UI language. See lib/client/theme.svelte.ts and lib/i18n.
+			(function () {
+				var root = document.documentElement;
+				try {
+					var t = localStorage.getItem('mai.theme');
+					var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+					root.dataset.theme = dark ? 'dark' : 'light';
+				} catch (e) {
+					root.dataset.theme = 'light';
+				}
+				try {
+					var l = localStorage.getItem('mai.lang');
+					if (l !== 'es' && l !== 'en') {
+						var langs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+						l = 'en';
+						for (var i = 0; i < langs.length; i++) if (/^es\b/i.test(langs[i])) l = 'es';
+					}
+					root.lang = l;
+				} catch (e) {}
+			})();
+			// The browser may offer install before the app boots: keep the event (lib/client/install.svelte.ts).
+			addEventListener('beforeinstallprompt', function (e) {
+				e.preventDefault();
+				window.__maiInstall = e;
+			});
+		</script>
+		<link rel="icon" href="/mai-docs/favicon.svg" />
+		<link rel="apple-touch-icon" href="/mai-docs/apple-touch-icon.png" />
+		<link rel="manifest" href="/mai-docs/manifest.webmanifest" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Mai" />
+		<link href="/mai-docs/_app/immutable/entry/start.CfvG__gP.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/entry/payload.DSmR2FwN.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/CCMZs0eX.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/B8MFEODS.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/vSItSx1c.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/Jn07a2sO.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/entry/app.C_acIz0J.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/nodes/0.Xk4jvTyG.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/BCiCTKAo.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/BqH3Ih5j.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/B0Ly8X5j.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/BpVRyU-D.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/C1Ww7WeY.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/BV3u_jq8.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/2MsUg5ok.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/B_n8doi2.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/CfqhXIep.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/N5IxXTUD.js" rel="modulepreload">
+		<link href="/mai-docs/_app/immutable/chunks/B_vLbPI4.js" rel="modulepreload">
+		
+		<link href="/mai-docs/_app/immutable/assets/0.DHqj1zNN.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_aqmq07 = {
+						base: "/mai-docs",
+						version: "d828136",
+						assets: "/mai-docs"
+					};
+
+					const element = document.currentScript.parentElement;
+
+					import("/mai-docs/_app/immutable/entry/start.CfvG__gP.js").then(async (kit) => {
+						kit.init(__sveltekit_aqmq07);
+						const app = await import("/mai-docs/_app/immutable/entry/app.C_acIz0J.js");
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>
