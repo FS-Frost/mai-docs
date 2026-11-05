@@ -2,14 +2,22 @@
 	// Toolbar: slides, insert, then context groups (text while editing, shape/box when selected), arrange, theme.
 	import type { Deck } from '../../slides/deck.svelte.ts';
 	import { GEOMS, geomPath } from '../../slides/geometry.ts';
-	import { LAYOUTS, resolveColor, uid, type ShapeEl, type TextBase, type Line, type Geom } from '../../slides/model.ts';
+	import { LAYOUTS, resolveColor, uid, type ShapeEl, type TextBase, type Line, type Geom, type TableEl, type IconEl, type MediaEl, type Fill } from '../../slides/model.ts';
+	import { deleteCol, deleteRow, insertCol, insertRow, merge, newTable, setCells, split, type CellRange } from '../../slides/table.ts';
 	import { t } from '../../i18n/index.svelte.ts';
 	import { dep } from '../../client/dep.ts';
 	import Icon, { type IconName } from '../Icon.svelte';
 	import Menu from '../Menu.svelte';
 	import ThemeColorPicker from './ThemeColorPicker.svelte';
 
-	let { deck, onimage, ontheme }: { deck: Deck; onimage: () => void; ontheme: () => void } = $props();
+	let {
+		deck,
+		onimage,
+		ontheme,
+		oninsert,
+		onmotion,
+		motionOpen = false
+	}: { deck: Deck; onimage: () => void; ontheme: () => void; oninsert: (what: 'chartSheet' | 'chartNew' | 'media' | 'icon') => void; onmotion: () => void; motionOpen?: boolean } = $props();
 
 	const FONTS = ['major', 'minor', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Segoe UI', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Courier New'];
 	const SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 54, 60, 72, 96];
@@ -93,6 +101,27 @@
 		}))
 	);
 	const WIDTHS = [0, 1, 2, 3, 4, 6, 8];
+
+	// ---------- Tables / icons / media ----------
+	const table = $derived(deck.selection.length === 1 && deck.selected[0]?.kind === 'table' ? (deck.selected[0] as TableEl) : null);
+	const iconEl = $derived(deck.selected.find((e): e is IconEl => e.kind === 'icon'));
+	const media = $derived(deck.selection.length === 1 && deck.selected[0]?.kind === 'media' ? (deck.selected[0] as MediaEl) : null);
+	const cells = $derived<CellRange>(deck.cellSel ?? { r1: 0, c1: 0, r2: (table?.rows.length ?? 1) - 1, c2: (table?.cols.length ?? 1) - 1 });
+	let hover = $state({ r: 0, c: 0 });
+
+	function addTable(r: number, c: number) {
+		const w = Math.min(deck.content.size.w * 0.8, c * 160);
+		const tb = newTable(r, c, 0, 0, w);
+		const pos = center(tb.w, tb.h);
+		deck.add({ ...tb, ...pos });
+	}
+	const tbl = (fn: (t: TableEl) => TableEl) => {
+		if (!table) return;
+		deck.stopEditing();
+		deck.updateTable(table.id, fn);
+		deck.cellSel = null;
+	};
+	const cellFill = (c: string | null) => table && deck.updateTable(table.id, (tb) => setCells(tb, cells, { fill: c ? ({ type: 'solid', color: c } as Fill) : undefined }));
 </script>
 
 {#snippet btn(b: Btn)}
@@ -130,6 +159,36 @@
 		{/snippet}
 	</Menu>
 	{@render btn({ icon: 'image', label: t().slides.image, run: onimage })}
+	<Menu title={t().slides.table} triggerClass="tb gap-0">
+		{#snippet icon()}<Icon name="table" />{/snippet}
+		{#snippet children(close)}
+			<div class="p-2" role="grid" aria-label={t().slides.table}>
+				<div class="grid grid-cols-8 gap-0.5" onmouseleave={() => (hover = { r: 0, c: 0 })} role="presentation">
+					{#each Array.from({ length: 48 }, (_, i) => i) as i (i)}
+						{@const r = Math.floor(i / 8) + 1}
+						{@const c = (i % 8) + 1}
+						<button
+							class="size-5 rounded-sm border {r <= hover.r && c <= hover.c ? 'border-accent bg-accent/25' : 'border-line'}"
+							aria-label={t().slides.tableSize(r, c)}
+							onmouseenter={() => (hover = { r, c })}
+							onfocus={() => (hover = { r, c })}
+							onclick={() => (close(), addTable(r, c))}
+						></button>
+					{/each}
+				</div>
+				<p class="mt-1.5 text-center text-xs text-muted">{hover.r ? t().slides.tableSize(hover.r, hover.c) : t().slides.table}</p>
+			</div>
+		{/snippet}
+	</Menu>
+	<Menu title={t().chart.chart} triggerClass="tb gap-0">
+		{#snippet icon()}<Icon name="chart" />{/snippet}
+		{#snippet children(close)}
+			<button class="menu-item" onclick={() => (close(), oninsert('chartSheet'))}>{t().chart.fromSheet}</button>
+			<button class="menu-item" onclick={() => (close(), oninsert('chartNew'))}>{t().chart.newData}</button>
+		{/snippet}
+	</Menu>
+	{@render btn({ icon: 'video', label: t().slides.media, run: () => oninsert('media') })}
+	{@render btn({ icon: 'sparkle', label: t().slides.icon, run: () => oninsert('icon') })}
 
 	{#if ed || shapes.length}
 		<span class="tb-sep"></span>
@@ -191,6 +250,59 @@
 		</Menu>
 	{/if}
 
+	{#if table && !ed}
+		<span class="tb-sep"></span>
+		<Menu title={t().slides.table} triggerClass="tb gap-0">
+			{#snippet icon()}<Icon name="rowAdd" />{/snippet}
+			{#snippet children(close)}
+				<button class="menu-item" onclick={() => (close(), tbl((tb) => insertRow(tb, cells.r1)))}>{t().slides.insertRowAbove}</button>
+				<button class="menu-item" onclick={() => (close(), tbl((tb) => insertRow(tb, cells.r2 + 1)))}>{t().slides.insertRowBelow}</button>
+				<button class="menu-item" onclick={() => (close(), tbl((tb) => insertCol(tb, cells.c1)))}>{t().slides.insertColLeft}</button>
+				<button class="menu-item" onclick={() => (close(), tbl((tb) => insertCol(tb, cells.c2 + 1)))}>{t().slides.insertColRight}</button>
+				<div class="my-1 border-t border-line"></div>
+				<button class="menu-item" disabled={table.rows.length <= 1} onclick={() => (close(), tbl((tb) => deleteRow(tb, cells.r1)))}>{t().slides.deleteRow}</button>
+				<button class="menu-item" disabled={table.cols.length <= 1} onclick={() => (close(), tbl((tb) => deleteCol(tb, cells.c1)))}>{t().slides.deleteCol}</button>
+				<div class="my-1 border-t border-line"></div>
+				<button class="menu-item" disabled={!deck.cellSel || (cells.r1 === cells.r2 && cells.c1 === cells.c2)} onclick={() => (close(), tbl((tb) => merge(tb, cells)))}>{t().slides.mergeCells}</button>
+				<button class="menu-item" disabled={!deck.cellSel} onclick={() => (close(), tbl((tb) => split(tb, cells.r1, cells.c1)))}>{t().slides.splitCell}</button>
+				<div class="my-1 border-t border-line"></div>
+				<button class="menu-item" aria-pressed={!!table.firstRow} onclick={() => (close(), deck.patch([table.id], { firstRow: !table.firstRow } as Partial<TableEl>))}>{t().slides.headerRow}</button>
+				<button class="menu-item" aria-pressed={!!table.bandRow} onclick={() => (close(), deck.patch([table.id], { bandRow: !table.bandRow } as Partial<TableEl>))}>{t().slides.bandedRows}</button>
+			{/snippet}
+		</Menu>
+		<Menu title={t().slides.cellFill} triggerClass="tb gap-0">
+			{#snippet icon()}<Icon name="fill" />{/snippet}
+			{#snippet children(close)}<ThemeColorPicker {theme} {close} onpick={cellFill} />{/snippet}
+		</Menu>
+		<Menu title={t().slides.tableBorder} triggerClass="tb gap-0">
+			{#snippet icon()}<span class="flex flex-col items-center"><Icon name="border" size={16} /><span class="-mt-0.5 h-1 w-4 rounded-sm" style="background:{table.border ? resolveColor(theme, table.border.color) : 'transparent'}"></span></span>{/snippet}
+			{#snippet children(close)}
+				<ThemeColorPicker {theme} {close} onpick={(c) => deck.patch([table.id], { border: c ? { color: c, width: table.border?.width || 1 } : null } as Partial<TableEl>)} />
+				<div class="my-1 border-t border-line"></div>
+				<div class="flex gap-1 px-2 pb-1">
+					{#each [1, 2, 3] as w (w)}<button class="btn !px-2 !py-0.5 text-xs" onclick={() => (close(), deck.patch([table.id], { border: { color: table.border?.color ?? 'dk2', width: w } } as Partial<TableEl>))}>{w} px</button>{/each}
+				</div>
+			{/snippet}
+		</Menu>
+	{/if}
+
+	{#if iconEl && !ed}
+		<span class="tb-sep"></span>
+		<Menu title={t().slides.iconColor} triggerClass="tb gap-0">
+			{#snippet icon()}<span class="flex flex-col items-center"><Icon name="color" size={16} /><span class="-mt-0.5 h-1 w-4 rounded-sm" style="background:{resolveColor(theme, iconEl!.color)}"></span></span>{/snippet}
+			{#snippet children(close)}<ThemeColorPicker {theme} {close} allowNone={false} onpick={(c) => c && deck.updateElements(deck.selection, (e) => (e.kind === 'icon' ? { ...e, color: c } : e))} />{/snippet}
+		</Menu>
+		<select class="select w-16 shrink-0" aria-label={t().slides.iconStroke} title={t().slides.iconStroke} value={String(iconEl.stroke)} onchange={(e) => deck.updateElements(deck.selection, (x) => (x.kind === 'icon' ? { ...x, stroke: Number((e.currentTarget as HTMLSelectElement).value) } : x))}>
+			{#each [1, 1.5, 2, 2.5, 3] as s (s)}<option value={String(s)}>{s}</option>{/each}
+		</select>
+	{/if}
+
+	{#if media}
+		<span class="tb-sep"></span>
+		<label class="flex items-center gap-1 px-1 text-sm"><input type="checkbox" checked={!!media.autoplay} onchange={(e) => deck.patch([media.id], { autoplay: (e.currentTarget as HTMLInputElement).checked } as Partial<MediaEl>)} />{t().slides.autoplay}</label>
+		<label class="flex items-center gap-1 px-1 text-sm"><input type="checkbox" checked={!!media.loop} onchange={(e) => deck.patch([media.id], { loop: (e.currentTarget as HTMLInputElement).checked } as Partial<MediaEl>)} />{t().slides.loop}</label>
+	{/if}
+
 	{#if sel}
 		<span class="tb-sep"></span>
 		<Menu title={t().slides.arrange} triggerClass="tb gap-0">
@@ -218,6 +330,7 @@
 
 	<span class="tb-sep"></span>
 	<button class="tb gap-1 px-2 text-sm" onclick={ontheme}><Icon name="palette" size={16} />{t().slides.theme}</button>
+	<button class="tb gap-1 px-2 text-sm" aria-pressed={motionOpen} onclick={onmotion}><Icon name="animation" size={16} />{t().slides.motion}</button>
 	<Menu title={t().slides.background} triggerClass="tb gap-0">
 		{#snippet icon()}<Icon name="fill" />{/snippet}
 		{#snippet children(close)}

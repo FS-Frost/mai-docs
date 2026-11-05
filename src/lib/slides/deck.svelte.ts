@@ -3,7 +3,8 @@ import type { Editor } from '@tiptap/core';
 import { untrack } from 'svelte';
 import { applyLayout, newSlide } from './layouts.ts';
 import { resize } from './layouts.ts';
-import { uid, type El, type LayoutKind, type Slide, type SlidesContent, type Theme } from './model.ts';
+import { uid, type Anim, type AnimEffect, type El, type LayoutKind, type Slide, type SlidesContent, type TableEl, type Theme, type Transition } from './model.ts';
+import type { CellRange } from './table.ts';
 
 const HISTORY = 100;
 const COALESCE_MS = 1200;
@@ -14,6 +15,10 @@ export class Deck {
 	selection = $state<string[]>([]);
 	/** Element whose text is being edited (Tiptap editor mounted on it). */
 	editing = $state<string | null>(null);
+	/** Table cell being edited ("r:c") when `editing` is a table. */
+	editingCell = $state<string | null>(null);
+	/** Selected cell range of the selected table. */
+	cellSel = $state<CellRange | null>(null);
 	textEditor = $state.raw<Editor | null>(null);
 	/** Bumped on every transaction of the text editor (toolbar active states). */
 	textVer = $state(0);
@@ -83,7 +88,8 @@ export class Deck {
 	private cleanSelection() {
 		const ids = new Set(this.slide.elements.map((e) => e.id));
 		this.selection = this.selection.filter((s) => ids.has(s));
-		if (this.editing && !ids.has(this.editing)) this.editing = null;
+		if (this.editing && !ids.has(this.editing)) this.stopEditing();
+		if (this.cellSel && !(this.selection.length === 1 && this.selected[0]?.kind === 'table')) this.cellSel = null;
 	}
 
 	// ---------- Slides ----------
@@ -105,6 +111,7 @@ export class Deck {
 		this.stopEditing();
 		this.current = n;
 		this.selection = [];
+		this.cellSel = null;
 	}
 
 	addSlide(kind: LayoutKind, after = this.current) {
@@ -119,7 +126,15 @@ export class Deck {
 
 	duplicateSlide(i = this.current) {
 		const src = this.content.slides[i];
-		const copy: Slide = { ...structuredClone(src), id: uid(), elements: src.elements.map((e) => ({ ...structuredClone(e), id: uid() })) };
+		const ids = new Map(src.elements.map((e) => [e.id, uid()]));
+		const copy: Slide = {
+			...structuredClone(src),
+			id: uid(),
+			elements: src.elements.map((e) => ({ ...structuredClone(e), id: ids.get(e.id)! })),
+			anims: src.anims?.map((a) => ({ ...a, id: uid(), el: ids.get(a.el) ?? a.el })),
+			timingXml: undefined,
+			animsFrom: undefined
+		};
 		const slides = [...this.content.slides];
 		slides.splice(i + 1, 0, copy);
 		this.setSlides(slides);
@@ -178,8 +193,9 @@ export class Deck {
 		const ids = new Set(this.selection);
 		if (!ids.size) return;
 		this.stopEditing();
-		this.updateSlide((s) => ({ ...s, elements: s.elements.filter((e) => !ids.has(e.id)) }));
+		this.updateSlide((s) => ({ ...s, elements: s.elements.filter((e) => !ids.has(e.id)), anims: s.anims?.filter((a) => !ids.has(a.el)) }));
 		this.selection = [];
+		this.cellSel = null;
 	}
 
 	duplicateSelected(offset = 16) {
@@ -248,6 +264,49 @@ export class Deck {
 		this.updateElements(this.selection, (e) => (axis === 'h' ? { ...e, x: pos.get(e.id)! } : { ...e, y: pos.get(e.id)! }));
 	}
 
+	updateTable(id: string, fn: (t: TableEl) => TableEl, key?: string) {
+		this.updateElements([id], (e) => (e.kind === 'table' ? fn(e) : e), key);
+	}
+
+	// ---------- Transitions & animations ----------
+
+	setTransition(tr: Transition | undefined, all = false) {
+		if (all) this.setSlides(this.content.slides.map((s) => ({ ...s, transition: tr })));
+		else this.updateSlide((s) => ({ ...s, transition: tr }));
+	}
+
+	private setAnims(fn: (a: Anim[]) => Anim[], key?: string) {
+		this.updateSlide((s) => ({ ...s, anims: fn(s.anims ?? []) }), key);
+	}
+
+	addAnim(effect: AnimEffect) {
+		const ids = this.selection;
+		if (!ids.length) return;
+		this.setAnims((list) => [
+			...list.filter((a) => !ids.includes(a.el)),
+			...ids.map((el, i) => ({ id: uid(), el, effect, dir: effect === 'fly' || effect === 'wipe' ? ('d' as const) : undefined, dur: effect === 'appear' ? 0 : 500, trigger: i === 0 ? ('click' as const) : ('with' as const) }))
+		]);
+	}
+
+	updateAnim(id: string, p: Partial<Anim>) {
+		this.setAnims((list) => list.map((a) => (a.id === id ? { ...a, ...p } : a)), `anim:${id}`);
+	}
+
+	removeAnim(id: string) {
+		this.setAnims((list) => list.filter((a) => a.id !== id));
+	}
+
+	moveAnim(id: string, dir: -1 | 1) {
+		this.setAnims((list) => {
+			const i = list.findIndex((a) => a.id === id);
+			const j = i + dir;
+			if (i < 0 || j < 0 || j >= list.length) return list;
+			const out = [...list];
+			[out[i], out[j]] = [out[j], out[i]];
+			return out;
+		});
+	}
+
 	// ---------- Theme / size ----------
 
 	setTheme(theme: Theme) {
@@ -261,13 +320,15 @@ export class Deck {
 
 	// ---------- Text editing ----------
 
-	startEditing(id: string) {
+	startEditing(id: string, cell?: string) {
 		this.selection = [id];
 		this.editing = id;
+		this.editingCell = cell ?? null;
 	}
 
 	stopEditing() {
 		this.editing = null;
+		this.editingCell = null;
 		this.textEditor = null;
 	}
 }

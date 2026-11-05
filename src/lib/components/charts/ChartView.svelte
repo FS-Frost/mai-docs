@@ -2,20 +2,21 @@
 	// Live Chart.js chart. Recreated when the type changes, updated in place otherwise.
 	import { onDestroy } from 'svelte';
 	import type { Chart as ChartT } from 'chart.js';
-	import { buildConfig, loadChart, PAPER, themeFromCss } from '../../charts/render.ts';
+	import { buildConfig, loadChart, PAPER, themeFromCss, type Theme as ChartTheme } from '../../charts/render.ts';
 	import type { ChartData } from '../../sheets/charts.ts';
 	import type { ChartOptions } from '../../sheets/model.ts';
 	import { theme } from '../../client/theme.svelte.ts';
 	import { i18n, t } from '../../i18n/index.svelte.ts';
 
-	let { options, data, paper = false, label }: { options: ChartOptions; data: ChartData; paper?: boolean; label?: string } = $props();
+	let { options, data, paper = false, label, colors, animate = true }: { options: ChartOptions; data: ChartData; paper?: boolean; label?: string; colors?: ChartTheme; animate?: boolean } = $props();
 
 	let canvas = $state<HTMLCanvasElement>();
 	let chart: ChartT | null = null;
 	let chartType = '';
 
 	$effect(() => {
-		const cfg = buildConfig($state.snapshot(options) as ChartOptions, $state.snapshot(data) as ChartData, paper ? PAPER : themeFromCss(theme.resolved === 'dark'), i18n.locale);
+		const cfg = buildConfig($state.snapshot(options) as ChartOptions, $state.snapshot(data) as ChartData, colors ?? (paper ? PAPER : themeFromCss(theme.resolved === 'dark')), i18n.locale);
+		if (!animate) cfg.options = { ...cfg.options, animation: false };
 		const el = canvas;
 		if (!el) return;
 		let cancelled = false;

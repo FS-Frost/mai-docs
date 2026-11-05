@@ -10,6 +10,13 @@
 	import ThemeDialog from '#lib/components/slides/ThemeDialog.svelte';
 	import Present from '#lib/components/slides/Present.svelte';
 	import SlideView from '#lib/components/slides/SlideView.svelte';
+	import MotionPanel from '#lib/components/slides/MotionPanel.svelte';
+	import IconPicker from '#lib/components/slides/IconPicker.svelte';
+	import ChartFromSheet from '#lib/components/docs/ChartFromSheet.svelte';
+	import DocChartPanel from '#lib/components/docs/DocChartPanel.svelte';
+	import type { DocChartAttrs } from '#lib/docs/extensions/chart-node.ts';
+	import type { IconNode } from '#lib/slides/icons.ts';
+	import { uid, type ChartEl, type IconEl } from '#lib/slides/model.ts';
 	import { Deck } from '#lib/slides/deck.svelte.ts';
 	import type { SlidesContent } from '#lib/slides/model.ts';
 	import { writePptx, type LoadImage } from '#lib/slides/io/pptx-write.ts';
@@ -36,6 +43,10 @@
 	let themeOpen = $state(false);
 	let presenting = $state<number | null>(null);
 	let canvas = $state<ReturnType<typeof Canvas>>();
+	let motionOpen = $state(false);
+	let iconOpen = $state(false);
+	let fromSheetOpen = $state(false);
+	let chartEdit = $state<string | null>(null);
 
 	const autosave = createAutosave(async () => {
 		if (!deck || readonly) return;
@@ -74,7 +85,25 @@
 		const b = await getBlob(blobId);
 		return b ? officeImage(b) : null;
 	};
-	const pptxBlob = async () => new Blob([(await writePptx(deck!.content, loadImage, { title: meta?.title, lang: i18n.locale })) as BlobPart], { type: PPTX_MIME });
+	const loadBlob = async (blobId: string) => {
+		const b = await getBlob(blobId);
+		return b ? new Uint8Array(await b.arrayBuffer()) : null;
+	};
+	/** Icon PNG for the .pptx (PowerPoint before 2016 ignores the SVG), drawn at 2× the box. */
+	const renderIcon = (el: IconEl, svg: string) =>
+		new Promise<Uint8Array | null>((resolve) => {
+			const img = new Image();
+			img.onload = () => {
+				const c = document.createElement('canvas');
+				c.width = Math.max(1, Math.round(el.w * 2));
+				c.height = Math.max(1, Math.round(el.h * 2));
+				c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
+				c.toBlob(async (b) => resolve(b ? new Uint8Array(await b.arrayBuffer()) : null), 'image/png');
+			};
+			img.onerror = () => resolve(null);
+			img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+		});
+	const pptxBlob = async () => new Blob([(await writePptx(deck!.content, loadImage, { title: meta?.title, lang: i18n.locale, loadBlob, renderIcon })) as BlobPart], { type: PPTX_MIME });
 
 	async function exportPptx() {
 		if (!deck || !meta) return;
@@ -135,6 +164,45 @@
 		input.click();
 	}
 
+	function pickMedia() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'video/*,audio/*,.mp4,.m4v,.webm,.mov,.mp3,.m4a,.wav,.ogg,.aac';
+		input.multiple = true;
+		input.onchange = () => void canvas?.insertMediaFiles([...(input.files ?? [])]);
+		input.click();
+	}
+
+	function centered(w: number, h: number) {
+		const s = deck!.content.size;
+		return { x: Math.round((s.w - w) / 2), y: Math.round((s.h - h) / 2) };
+	}
+
+	function addChart(a: Pick<DocChartAttrs, 'options' | 'data' | 'origin'>, edit: boolean) {
+		if (!deck) return;
+		const w = Math.round(deck.content.size.w * 0.55);
+		const h = Math.round(w * 0.58);
+		const el: ChartEl = { id: uid(), kind: 'chart', options: a.options, data: a.data, origin: a.origin, ...centered(w, h), w, h, rot: 0 };
+		deck.add(el);
+		if (edit) chartEdit = el.id;
+	}
+
+	function addIcon(name: string, nodes: IconNode) {
+		iconOpen = false;
+		if (!deck) return;
+		const el: IconEl = { id: uid(), kind: 'icon', icon: name, nodes: nodes.map(([tag, attrs]) => [tag, Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, String(v)]))]), color: 'accent1', stroke: 2, ...centered(120, 120), w: 120, h: 120, rot: 0 };
+		deck.add(el);
+	}
+
+	function oninsert(what: 'chartSheet' | 'chartNew' | 'media' | 'icon') {
+		if (what === 'chartSheet') fromSheetOpen = true;
+		else if (what === 'chartNew') addChart({ options: { type: 'column', legend: 'bottom' }, data: { labels: ['T1', 'T2', 'T3', 'T4'], series: [{ name: `${t().chart.series} 1`, values: [12, 19, 8, 15] }] } }, true);
+		else if (what === 'media') pickMedia();
+		else iconOpen = true;
+	}
+
+	const editedChart = $derived(chartEdit && deck ? (deck.slide.elements.find((e) => e.id === chartEdit && e.kind === 'chart') as ChartEl | undefined) : undefined);
+
 	function onKey(e: KeyboardEvent) {
 		const mod = e.ctrlKey || e.metaKey;
 		if (mod && !e.altKey && e.key.toLowerCase() === 's') {
@@ -183,14 +251,14 @@
 			{/snippet}
 		</EditorHeader>
 		{#if deck}
-			{#if !readonly}<SlidesToolbar {deck} onimage={pickImage} ontheme={() => (themeOpen = true)} />{/if}
+			{#if !readonly}<SlidesToolbar {deck} onimage={pickImage} ontheme={() => (themeOpen = true)} {oninsert} {motionOpen} onmotion={() => ((motionOpen = !motionOpen), (chartEdit = null))} />{/if}
 			{#if readonly}
 				<div class="border-b border-warn/40 bg-warn/10 px-4 py-1.5 text-sm text-warn">{t().file.readOnlyDetail}</div>
 			{/if}
 			<div class="flex min-h-0 flex-1">
 				<div class="hidden md:flex"><Thumbs {deck} {readonly} /></div>
 				<div class="flex min-w-0 flex-1 flex-col">
-					<div class="min-h-0 flex-1"><Canvas bind:this={canvas} {deck} fileId={id} {readonly} /></div>
+					<div class="min-h-0 flex-1"><Canvas bind:this={canvas} {deck} fileId={id} {readonly} oneditchart={(el) => ((chartEdit = el.id), (motionOpen = false))} /></div>
 					<div class="flex items-center gap-2 border-t border-line bg-surface px-2 py-1 md:hidden">
 						<button class="tb" aria-label={t().slides.previous} onclick={() => deck?.go(deck.current - 1)}><Icon name="chevronLeft" /></button>
 						<span class="text-sm tabular-nums">{deck.current + 1} / {deck.content.slides.length}</span>
@@ -203,13 +271,35 @@
 						value={notesValue}
 						readonly={readonly}
 						oninput={(e) => deck?.setNotes((e.currentTarget as HTMLTextAreaElement).value)}
-					></textarea>
-				</div>
+						></textarea>
+					</div>
+					{#if motionOpen && !readonly}<MotionPanel {deck} onclose={() => (motionOpen = false)} />{/if}
+					{#if editedChart && !readonly}
+						{@const ch = editedChart}
+						<DocChartPanel
+						attrs={{ options: ch.options, data: ch.data, origin: ch.origin, width: ch.w, height: ch.h }}
+						onchange={(a) => deck?.patch([ch.id], { options: a.options, data: a.data } as Partial<ChartEl>, `chart:${ch.id}`)}
+						onclose={() => (chartEdit = null)}
+						ondelete={() => {
+							deck!.selection = [ch.id];
+							deck!.removeSelected();
+							chartEdit = null;
+						}}
+						/>
+					{/if}
 			</div>
 		{:else}
 			<div class="grid flex-1 place-items-center text-muted">{t().common.loading}</div>
 		{/if}
 	</div>
+{/if}
+
+{#if iconOpen}
+	<IconPicker onpick={addIcon} onclose={() => (iconOpen = false)} />
+{/if}
+
+{#if fromSheetOpen}
+	<ChartFromSheet onpick={(a) => ((fromSheetOpen = false), addChart(a, false))} onclose={() => (fromSheetOpen = false)} />
 {/if}
 
 {#if themeOpen && deck}

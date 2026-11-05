@@ -7,6 +7,7 @@ import { putBlob } from '../storage/blobs.ts';
 
 export { csvToSheet } from '../sheets/io/csv.ts';
 export { readXlsx } from '../sheets/io/xlsx.ts';
+export { readPptx } from '../slides/io/pptx-read.ts';
 
 export async function docFromFile(file: File, ext: string, docId: string): Promise<{ json: JSONContent; lossy: boolean }> {
 	if (ext === '.docx') {

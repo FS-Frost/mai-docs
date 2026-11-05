@@ -23,6 +23,7 @@
         "fast-xml-parser": "^5.12.0",
         "fflate": "^0.8.3",
         "idb": "^8.0.4",
+        "lucide": "1.58.0",
         "mammoth": "^1.13.0",
         "numfmt": "^4.1.2",
         "papaparse": "^5.7.0",
@@ -533,6 +534,8 @@
     "lodash.uniq": ["lodash.uniq@4.5.0", "", {}, "sha512-xfBaXQd9ryd9dlSDvnvI0lvxfLJlYAZzXomUYzLKtUeOQvOP5piqAWuGtrhWeqaXK9hhoM/iyJc5AV+XfsX3HQ=="],
 
     "lop": ["lop@0.4.2", "", { "dependencies": { "duck": "^0.1.12", "option": "~0.2.1", "underscore": "^1.13.1" } }, "sha512-RefILVDQ4DKoRZsJ4Pj22TxE3omDO47yFpkIBoDKzkqPRISs5U1cnAdg/5583YPkWPaLIYHOKRMQSvjFsO26cw=="],
+
+    "lucide": ["lucide@1.58.0", "", {}, "sha512-zLmKV6pCsq4awx4vXw6N1WBHim0exJSJjFc8WnnIUzBXk4SuzCb74IET6+akbUERw61U5ODE1JiHgQ1ILrpMKQ=="],
 
     "magic-string": ["magic-string@1.4.5", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.6.0" } }, "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w=="],
 

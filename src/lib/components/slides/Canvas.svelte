@@ -4,8 +4,10 @@
 	import { onMount } from 'svelte';
 	import type { Deck } from '../../slides/deck.svelte.ts';
 	import { snapRect, intersects, union, type Guide, type Rect } from '../../slides/geometry.ts';
-	import { uid, type El, type ShapeEl } from '../../slides/model.ts';
+	import { uid, type ChartEl, type El, type MediaEl, type ShapeEl } from '../../slides/model.ts';
+	import { cellAt, cellBox, expand, scaleTable, setCells } from '../../slides/table.ts';
 	import { fitSize, prepareImage } from '../../files/images.ts';
+	import { isMedia, mediaKind, mediaMime, MAX_MEDIA_BYTES, videoPoster } from '../../files/media.ts';
 	import { putBlob } from '../../storage/blobs.ts';
 	import { textDoc } from '../../slides/model.ts';
 	import { toast } from '../../client/toast.svelte.ts';
@@ -13,7 +15,7 @@
 	import SlideView from './SlideView.svelte';
 	import TextEditorBox from './TextEditorBox.svelte';
 
-	let { deck, fileId, readonly = false }: { deck: Deck; fileId: string; readonly?: boolean } = $props();
+	let { deck, fileId, readonly = false, oneditchart }: { deck: Deck; fileId: string; readonly?: boolean; oneditchart?: (el: ChartEl) => void } = $props();
 
 	let host = $state<HTMLDivElement>();
 	let box = $state({ w: 800, h: 450 });
@@ -43,7 +45,8 @@
 		| { kind: 'move'; start: { x: number; y: number }; orig: Map<string, Rect>; key: string; moved: boolean; pointer: number }
 		| { kind: 'resize'; dir: Dir; start: { x: number; y: number }; orig: El; key: string; pointer: number }
 		| { kind: 'rotate'; center: { x: number; y: number }; orig: number; key: string; pointer: number }
-		| { kind: 'marquee'; start: { x: number; y: number }; base: string[]; pointer: number };
+		| { kind: 'marquee'; start: { x: number; y: number }; base: string[]; pointer: number }
+		| { kind: 'cells'; table: string; r: number; c: number; pointer: number };
 	let drag: Drag | null = null;
 	let guides = $state<Guide[]>([]);
 	let marquee = $state<Rect | null>(null);
@@ -58,6 +61,19 @@
 		host?.focus({ preventScroll: true });
 		if (deck.editing === el.id) return;
 		if (deck.editing) deck.stopEditing();
+		// A selected table takes clicks as cell selection (drag = range, Shift = extend).
+		if (el.kind === 'table' && deck.selection.length === 1 && deck.selection[0] === el.id) {
+			const p = toLogical(e);
+			const hit = cellAt(el, p.x - el.x, p.y - el.y);
+			if (hit) {
+				if (e.shiftKey && deck.cellSel) deck.cellSel = expand(el, { ...deck.cellSel, r2: hit.r, c2: hit.c });
+				else deck.cellSel = { r1: hit.r, c1: hit.c, r2: hit.r, c2: hit.c };
+				drag = { kind: 'cells', table: el.id, r: deck.cellSel.r1, c: deck.cellSel.c1, pointer: e.pointerId };
+				capture(e);
+				return;
+			}
+		}
+		deck.cellSel = null;
 		if (e.shiftKey || e.ctrlKey || e.metaKey) {
 			deck.selection = deck.selection.includes(el.id) ? deck.selection.filter((s) => s !== el.id) : [...deck.selection, el.id];
 			return;
@@ -73,6 +89,7 @@
 		if (e.button !== 0) return;
 		host?.focus({ preventScroll: true });
 		if (deck.editing) deck.stopEditing();
+		deck.cellSel = null;
 		const base = e.shiftKey ? [...deck.selection] : [];
 		deck.selection = base;
 		drag = { kind: 'marquee', start: toLogical(e), base, pointer: e.pointerId };
@@ -137,17 +154,25 @@
 			const lcy = (sy * (nh - o.h)) / 2;
 			const cx = o.x + o.w / 2 + lcx * cos - lcy * sin;
 			const cy = o.y + o.h / 2 + lcx * sin + lcy * cos;
-			deck.patch([o.id], { x: Math.round(cx - nw / 2), y: Math.round(cy - nh / 2), w: Math.round(nw), h: Math.round(nh) }, drag.key);
+			const box = { x: Math.round(cx - nw / 2), y: Math.round(cy - nh / 2), w: Math.round(nw), h: Math.round(nh) };
+			if (o.kind === 'table') deck.updateElements([o.id], () => ({ ...scaleTable(o, box.w, box.h), x: box.x, y: box.y }), drag.key);
+			else deck.patch([o.id], box, drag.key);
 		} else if (drag.kind === 'rotate') {
 			let a = (Math.atan2(p.y - drag.center.y, p.x - drag.center.x) * 180) / Math.PI + 90;
 			if (e.shiftKey) a = Math.round(a / 15) * 15;
 			else if (Math.abs(((a % 360) + 360) % 360) < 3 || Math.abs((((a % 360) + 360) % 360) - 360) < 3) a = 0;
 			a = Math.round(((a % 360) + 360) % 360);
 			deck.patch(deck.selection, { rot: a }, drag.key);
+		} else if (drag.kind === 'cells') {
+			const id = drag.table;
+			const tb = slide.elements.find((x) => x.id === id);
+			if (tb?.kind !== 'table') return;
+			const hit = cellAt(tb, p.x - tb.x, p.y - tb.y);
+			if (hit) deck.cellSel = expand(tb, { r1: drag.r, c1: drag.c, r2: hit.r, c2: hit.c });
 		} else {
 			const r = { x: Math.min(p.x, drag.start.x), y: Math.min(p.y, drag.start.y), w: Math.abs(p.x - drag.start.x), h: Math.abs(p.y - drag.start.y) };
 			marquee = r;
-			const hit = slide.elements.filter((el) => intersects(r, el)).map((el) => el.id);
+			const hit = slide.elements.filter((el) => !el.locked && intersects(r, el)).map((el) => el.id);
 			deck.selection = [...new Set([...drag.base, ...hit])];
 		}
 	}
@@ -162,14 +187,27 @@
 	/** Double-click resolves the element under the pointer (pointer capture retargets the event to the surface). */
 	function dblSurface(e: MouseEvent) {
 		const p = toLogical(e);
-		const el = [...slide.elements].reverse().find((x) => p.x >= x.x && p.x <= x.x + x.w && p.y >= x.y && p.y <= x.y + Math.max(x.h, 8));
+		const el = [...slide.elements].reverse().find((x) => !x.locked && p.x >= x.x && p.x <= x.x + x.w && p.y >= x.y && p.y <= x.y + Math.max(x.h, 8));
 		if (el) dbl(e, el);
 	}
 
 	function dbl(e: MouseEvent, el: El) {
 		e.stopPropagation();
-		if (readonly || el.kind !== 'shape' || el.geom === 'line') return;
+		if (readonly) return;
+		if (el.kind === 'chart') return oneditchart?.(el);
+		if (el.kind === 'table') {
+			const p = toLogical(e);
+			const hit = cellAt(el, p.x - el.x, p.y - el.y);
+			if (hit) startCell(el.id, hit.r, hit.c);
+			return;
+		}
+		if (el.kind !== 'shape' || el.geom === 'line') return;
 		deck.startEditing(el.id);
+	}
+
+	function startCell(id: string, r: number, c: number) {
+		deck.cellSel = { r1: r, c1: c, r2: r, c2: c };
+		deck.startEditing(id, `${r}:${c}`);
 	}
 
 	// ---------- Keyboard & clipboard ----------
@@ -206,10 +244,22 @@
 		}
 		if (mod && k.toLowerCase() === 'a') {
 			e.preventDefault();
-			deck.selection = slide.elements.map((x) => x.id);
+			deck.selection = slide.elements.filter((x) => !x.locked).map((x) => x.id);
 			return;
 		}
 		if (readonly) return;
+		const tsel = deck.cellSel && deck.selected[0]?.kind === 'table' ? deck.selected[0] : null;
+		if (tsel && deck.cellSel && (k === 'Delete' || k === 'Backspace')) {
+			e.preventDefault();
+			const g = deck.cellSel;
+			deck.updateTable(tsel.id, (tb) => setCells(tb, g, { text: undefined }));
+			return;
+		}
+		if (tsel && deck.cellSel && (k === 'Enter' || k === 'F2')) {
+			e.preventDefault();
+			startCell(tsel.id, deck.cellSel.r1, deck.cellSel.c1);
+			return;
+		}
 		if ((k === 'Delete' || k === 'Backspace') && deck.selection.length) {
 			e.preventDefault();
 			deck.removeSelected();
@@ -233,6 +283,12 @@
 			if (el.kind === 'shape' && el.geom !== 'line') {
 				e.preventDefault();
 				deck.startEditing(el.id);
+			} else if (el.kind === 'table') {
+				e.preventDefault();
+				startCell(el.id, 0, 0);
+			} else if (el.kind === 'chart') {
+				e.preventDefault();
+				oneditchart?.(el);
 			}
 		}
 	}
@@ -247,7 +303,9 @@
 	async function onPaste(e: ClipboardEvent) {
 		if (deck.editing || readonly) return;
 		const text = e.clipboardData?.getData('text/plain') ?? '';
-		const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith('image/'));
+		const all = [...(e.clipboardData?.files ?? [])];
+		const files = all.filter((f) => f.type.startsWith('image/'));
+		const media = all.filter(isMedia);
 		e.preventDefault();
 		if (text.startsWith(MARK)) {
 			try {
@@ -258,8 +316,9 @@
 			}
 			return;
 		}
-		if (files.length && !text) {
-			await insertImageFiles(files);
+		if ((files.length || media.length) && !text) {
+			if (files.length) await insertImageFiles(files);
+			if (media.length) await insertMediaFiles(media);
 			return;
 		}
 		if (text.trim()) {
@@ -288,11 +347,39 @@
 		deck.addMany(added);
 	}
 
+	export async function insertMediaFiles(files: File[], at?: { x: number; y: number }) {
+		const added: El[] = [];
+		for (const f of files) {
+			if (f.size > MAX_MEDIA_BYTES) {
+				toast.warn(t().slides.mediaTooBig(f.name));
+				continue;
+			}
+			const kind = mediaKind(f);
+			const blobId = await putBlob(fileId, f);
+			let posterBlobId: string | undefined;
+			let w = 160;
+			let h = 160;
+			if (kind === 'video') {
+				const poster = await videoPoster(f);
+				if (poster) posterBlobId = await putBlob(fileId, poster.blob);
+				({ w, h } = fitSize(poster?.width ?? 1280, poster?.height ?? 720, size.w * 0.6, size.h * 0.6));
+			}
+			const x = at ? Math.round(at.x - w / 2) : Math.round((size.w - w) / 2);
+			const y = at ? Math.round(at.y - h / 2) : Math.round((size.h - h) / 2);
+			const el: MediaEl = { id: uid(), kind: 'media', media: kind, blobId, mime: mediaMime(f), fileName: f.name, posterBlobId, x, y, w, h, rot: 0 };
+			added.push(el);
+		}
+		deck.addMany(added);
+	}
+
 	async function onDrop(e: DragEvent) {
-		const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/'));
-		if (!files.length || readonly) return;
+		const all = [...(e.dataTransfer?.files ?? [])];
+		const files = all.filter((f) => f.type.startsWith('image/'));
+		const media = all.filter(isMedia);
+		if ((!files.length && !media.length) || readonly) return;
 		e.preventDefault();
-		await insertImageFiles(files, toLogical(e));
+		if (files.length) await insertImageFiles(files, toLogical(e));
+		if (media.length) await insertMediaFiles(media, toLogical(e));
 	}
 
 	const sel = $derived(deck.selected);
@@ -321,7 +408,7 @@
 	ondrop={onDrop}
 >
 	<div class="shadow-[0_1px_3px_rgb(0_0_0/0.2),0_6px_24px_rgb(0_0_0/0.12)]">
-		<SlideView content={deck.content} {slide} {scale} placeholders hideTextOf={deck.editing}>
+		<SlideView content={deck.content} {slide} {scale} placeholders hideTextOf={deck.editing} hideCell={deck.editingCell}>
 			<div
 				bind:this={surface}
 				class="absolute inset-0"
@@ -332,7 +419,7 @@
 				onpointercancel={up}
 				ondblclick={dblSurface}
 			>
-				{#each slide.elements as el (el.id)}
+				{#each slide.elements.filter((x) => !x.locked) as el (el.id)}
 					<div
 						class="absolute {readonly ? '' : 'cursor-move'}"
 						style="left:{el.x}px;top:{el.y}px;width:{Math.max(el.w, 8 * inv)}px;height:{Math.max(el.h, 8 * inv)}px;transform:{tf(el)}"
@@ -342,7 +429,15 @@
 				{/each}
 				{#if deck.editing}
 					{@const ed = slide.elements.find((x) => x.id === deck.editing)}
-					{#if ed && ed.kind === 'shape'}<TextEditorBox {deck} el={ed} {theme} />{/if}
+					{#key `${deck.editing}|${deck.editingCell}`}
+						{#if ed && (ed.kind === 'shape' || ed.kind === 'table')}<TextEditorBox {deck} el={ed} {theme} cell={deck.editingCell} />{/if}
+					{/key}
+				{/if}
+				{#if single?.kind === 'table' && deck.cellSel && !deck.editingCell}
+					{@const g = deck.cellSel}
+					{@const a = cellBox(single, g.r1, g.c1)}
+					{@const b = cellBox(single, g.r2, g.c2)}
+					<div class="pointer-events-none absolute bg-[#3b5bdb]/15" style="left:{single.x + a.x}px;top:{single.y + a.y}px;width:{b.x + b.w - a.x}px;height:{b.y + b.h - a.y}px;outline:{2 * inv}px solid #3b5bdb"></div>
 				{/if}
 				{#each sel as el (el.id)}
 					<div class="pointer-events-none absolute" style="left:{el.x}px;top:{el.y}px;width:{el.w}px;height:{el.h}px;transform:{tf(el)};outline:{2 * inv}px solid #3b5bdb;outline-offset:{inv}px"></div>

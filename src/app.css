@@ -450,3 +450,77 @@ body {
 	height: 0;
 	pointer-events: none;
 }
+
+/* Slides: entrance animations (ElementView: --fx/--fy = offset to the slide edge) and transitions (Present). */
+@keyframes mai-fade {
+	from {
+		opacity: 0;
+	}
+}
+@keyframes mai-fly {
+	from {
+		transform: translate(var(--fx), var(--fy));
+	}
+}
+@keyframes mai-zoom {
+	from {
+		opacity: 0;
+		transform: scale(0.3);
+	}
+}
+@keyframes mai-wipe-l {
+	from {
+		clip-path: inset(0 100% 0 0);
+	}
+	to {
+		clip-path: inset(0 0 0 0);
+	}
+}
+@keyframes mai-wipe-r {
+	from {
+		clip-path: inset(0 0 0 100%);
+	}
+	to {
+		clip-path: inset(0 0 0 0);
+	}
+}
+@keyframes mai-wipe-u {
+	from {
+		clip-path: inset(0 0 100% 0);
+	}
+	to {
+		clip-path: inset(0 0 0 0);
+	}
+}
+@keyframes mai-wipe-d {
+	from {
+		clip-path: inset(100% 0 0 0);
+	}
+	to {
+		clip-path: inset(0 0 0 0);
+	}
+}
+@keyframes mai-slide-in {
+	from {
+		transform: translate(var(--tx), var(--ty));
+	}
+}
+@keyframes mai-slide-out {
+	to {
+		transform: translate(var(--tx), var(--ty));
+	}
+}
+@keyframes mai-fade-out {
+	to {
+		opacity: 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.slide-anim,
+	.slide-anim * {
+		animation-duration: 1ms !important;
+	}
+}
+.slide-table td .slide-text p {
+	margin: 0;
+}

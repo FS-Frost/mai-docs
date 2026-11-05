@@ -93,7 +93,13 @@
 		timer: 'M12 8v5l3 2 M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M10 2h4',
 		wrapLeft: 'M3 5h8v8H3z M15 6h6 M15 10h6 M15 14h6 M3 18h18',
 		wrapRight: 'M13 5h8v8h-8z M3 6h6 M3 10h6 M3 14h6 M3 18h18',
-		caption: 'M4 4h16v11H4z M8 19h8'
+		caption: 'M4 4h16v11H4z M8 19h8',
+		video: 'M3 6h12v12H3z M15 10l6-3v10l-6-3',
+		audio: 'M11 5L6 9H3v6h3l5 4V5z M15.5 8.5a5 5 0 0 1 0 7 M18.5 5.5a9 9 0 0 1 0 13',
+		sparkle: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z',
+		animation: 'M5 12a7 7 0 0 1 7-7 M12 19a7 7 0 0 0 7-7 M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0z',
+		transition: 'M3 5h8v14H3z M13 5h8v14h-8z M9 12h6 M13 10l2 2-2 2',
+		play: 'M7 4l13 8-13 8V4z'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>

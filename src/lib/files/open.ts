@@ -10,9 +10,10 @@ import { createFile, type FileMeta } from '../storage/library.ts';
 
 export const ACCEPT = {
 	doc: ['.docx', '.md', '.markdown', '.txt', '.html', '.htm'],
-	sheet: ['.xlsx', '.csv', '.tsv']
+	sheet: ['.xlsx', '.csv', '.tsv'],
+	slides: ['.pptx']
 };
-export const ACCEPT_ALL = [...ACCEPT.doc, ...ACCEPT.sheet];
+export const ACCEPT_ALL = [...ACCEPT.doc, ...ACCEPT.sheet, ...ACCEPT.slides];
 
 const ext = (name: string) => (/\.[^.]+$/.exec(name.toLowerCase())?.[0] ?? '');
 const stem = (name: string) => name.replace(/\.[^.]+$/, '') || name;
@@ -29,7 +30,7 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 	const locale = i18n.locale;
 	let meta: FileMeta;
 	if (!ACCEPT_ALL.includes(e)) throw new Error(t().library.unsupported(file.name));
-	const { csvToSheet, docFromFile, readXlsx } = await import('./convert.ts');
+	const { csvToSheet, docFromFile, readXlsx, readPptx } = await import('./convert.ts');
 	if (ACCEPT.doc.includes(e)) {
 		const id = uid();
 		const { json, lossy } = await docFromFile(file, e, id);
@@ -54,6 +55,17 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 		}
 		meta = await createFile('sheet', title, content, { origin }, id);
 		if (handle && e === '.xlsx') await setHandle(meta.id, handle);
+	} else if (ACCEPT.slides.includes(e)) {
+		const id = uid();
+		const res = await readPptx(new Uint8Array(await file.arrayBuffer()), {
+			putBlob: (data, mime) => putBlob(id, new Blob([data as BlobPart], { type: mime })),
+			fontAvailable
+		});
+		if (res.lossy) warnings.push(t().slides.importLossy);
+		if (res.fontsReplaced.length) warnings.push(t().slides.fontsReplaced(res.fontsReplaced.join(', ')));
+		if (res.animsApprox) warnings.push(t().slides.importedAnims);
+		meta = await createFile('slides', title, res.content, { origin }, id);
+		if (handle) await setHandle(meta.id, handle);
 	} else throw new Error(t().library.unsupported(file.name));
 	return { meta, warnings };
 }
@@ -61,6 +73,29 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 function lostLabel(l: LostKind) {
 	const s = t().sheet;
 	return { images: s.lostImages, charts: s.lostCharts, validations: s.lostValidations, conditional: s.lostConditional }[l];
+}
+
+const fontCache = new Map<string, boolean>();
+/** Installed-font check: text width with the family differs from every generic fallback. */
+export function fontAvailable(family: string): boolean {
+	if (/^(serif|sans-serif|monospace)$/.test(family)) return true;
+	const hit = fontCache.get(family);
+	if (hit !== undefined) return hit;
+	const ctx = document.createElement('canvas').getContext('2d');
+	if (!ctx) return true;
+	const sample = 'mmmmmmmmmmlli WQ@#0123456789';
+	let ok = false;
+	for (const generic of ['monospace', 'serif', 'sans-serif']) {
+		ctx.font = `72px ${generic}`;
+		const a = ctx.measureText(sample).width;
+		ctx.font = `72px "${family.replace(/"/g, '')}", ${generic}`;
+		if (ctx.measureText(sample).width !== a) {
+			ok = true;
+			break;
+		}
+	}
+	fontCache.set(family, ok);
+	return ok;
 }
 
 /** Shows the open picker. Returns files with their handles when available. */
@@ -71,7 +106,8 @@ export async function pickFiles(): Promise<{ file: File; handle?: FileSystemFile
 				multiple: true,
 				types: [
 					{ description: t().kind.doc, accept: { 'application/octet-stream': ACCEPT.doc } },
-					{ description: t().kind.sheet, accept: { 'application/octet-stream': ACCEPT.sheet } }
+					{ description: t().kind.sheet, accept: { 'application/octet-stream': ACCEPT.sheet } },
+					{ description: t().kind.slides, accept: { 'application/octet-stream': ACCEPT.slides } }
 				]
 			});
 			return Promise.all(handles.map(async (h) => ({ file: await h.getFile(), handle: h })));

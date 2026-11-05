@@ -1,12 +1,12 @@
 // Preset shape outlines (SVG path in a w×h box) matching PowerPoint's prstGeom names, plus snapping math.
-import type { Geom } from './model.ts';
+import type { CustomPath, Geom } from './model.ts';
 
 export const GEOMS: Geom[] = ['rect', 'roundRect', 'ellipse', 'triangle', 'rtTriangle', 'diamond', 'pentagon', 'hexagon', 'parallelogram', 'trapezoid', 'star5', 'rightArrow', 'leftArrow', 'chevron', 'line'];
 
 const pts = (p: [number, number][]) => `M${p.map(([x, y]) => `${round(x)},${round(y)}`).join('L')}Z`;
 const round = (n: number) => Math.round(n * 100) / 100;
 
-export function geomPath(g: Geom, w: number, h: number): string {
+export function geomPath(g: Geom | (string & {}), w: number, h: number): string {
 	switch (g) {
 		case 'rect':
 			return pts([[0, 0], [w, 0], [w, h], [0, h]]);
@@ -59,7 +59,61 @@ export function geomPath(g: Geom, w: number, h: number): string {
 		}
 		case 'line':
 			return `M0,0L${w},${h}`;
+		case 'straightConnector1':
+		case 'bentConnector3':
+			return `M0,0L${w},${h}`;
+		case 'octagon': {
+			const d = Math.min(w, h) * 0.29;
+			return pts([[d, 0], [w - d, 0], [w, d], [w, h - d], [w - d, h], [d, h], [0, h - d], [0, d]]);
+		}
+		case 'plus': {
+			const d = Math.min(w, h) * 0.25;
+			return pts([[d, 0], [w - d, 0], [w - d, d], [w, d], [w, h - d], [w - d, h - d], [w - d, h], [d, h], [d, h - d], [0, h - d], [0, d], [d, d]]);
+		}
+		case 'snip1Rect': {
+			const d = Math.min(w, h) * 0.1667;
+			return pts([[0, 0], [w - d, 0], [w, d], [w, h], [0, h]]);
+		}
+		case 'homePlate': {
+			const d = Math.min(w * 0.5, h * 0.5);
+			return pts([[0, 0], [w - d, 0], [w, h / 2], [w - d, h], [0, h]]);
+		}
+		case 'upArrow': {
+			const head = Math.min(h * 0.5, w);
+			return pts([[w * 0.25, h], [w * 0.25, head], [0, head], [w / 2, 0], [w, head], [w * 0.75, head], [w * 0.75, h]]);
+		}
+		case 'downArrow': {
+			const head = Math.min(h * 0.5, w);
+			return pts([[w * 0.25, 0], [w * 0.75, 0], [w * 0.75, h - head], [w, h - head], [w / 2, h], [0, h - head], [w * 0.25, h - head]]);
+		}
+		case 'flowChartProcess':
+			return pts([[0, 0], [w, 0], [w, h], [0, h]]);
+		case 'flowChartDecision':
+			return pts([[w / 2, 0], [w, h / 2], [w / 2, h], [0, h / 2]]);
+		case 'flowChartTerminator':
+		case 'flowChartAlternateProcess': {
+			const r = g === 'flowChartTerminator' ? Math.min(h / 2, w / 2) : Math.min(w, h) * 0.1667;
+			return `M${r},0H${w - r}A${r},${r} 0 0 1 ${w},${r}V${h - r}A${r},${r} 0 0 1 ${w - r},${h}H${r}A${r},${r} 0 0 1 0,${h - r}V${r}A${r},${r} 0 0 1 ${r},0Z`;
+		}
+		default:
+			// Other presets (imported): drawn as their bounding rectangle; the preset name is kept for export.
+			return pts([[0, 0], [w, 0], [w, h], [0, h]]);
 	}
+}
+
+/** Scales an absolute M/L/C/Q/Z path from its own pw×ph space to w×h. */
+export function scalePath(p: CustomPath, w: number, h: number): string {
+	const sx = p.w ? w / p.w : 1;
+	const sy = p.h ? h / p.h : 1;
+	let i = 0;
+	return p.d.replace(/([MLCQZ])|(-?[\d.]+(?:e-?\d+)?)/g, (m, cmd) => {
+		if (cmd) {
+			i = 0;
+			return cmd;
+		}
+		const v = Number(m) * (i++ % 2 ? sy : sx);
+		return ` ${round(v)}`;
+	});
 }
 
 // ---------- Snapping ----------

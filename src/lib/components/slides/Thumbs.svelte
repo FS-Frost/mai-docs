@@ -83,7 +83,7 @@
 					}}
 				>
 					<div class="pointer-events-none overflow-hidden rounded-sm ring-1 ring-line">
-						<SlideView content={deck.content} slide={s} {scale} />
+						<SlideView content={deck.content} slide={s} {scale} thumb />
 					</div>
 					{#if s.hidden}<span class="absolute right-1 bottom-1 rounded bg-black/60 p-0.5 text-white" title={t().slides.hidden}><Icon name="eyeOff" size={12} /></span>{/if}
 				</button>
