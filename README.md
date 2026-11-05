@@ -33,6 +33,8 @@ En Git Bash, para compilar con la base de GitHub Pages: `MSYS_NO_PATHCONV=1 BASE
 
 ## Deploy
 
+Sitio: https://fs-frost.github.io/mai-docs/ — repo https://github.com/FS-Frost/mai-docs.
+
 Cada push a `main` corre `.github/workflows/main.yml`: chequeo de tipos, tests, build con `BASE_PATH=/<repo>` y publicación de `build/` en la rama `gh-pages`. En GitHub, Settings → Pages debe servir desde la rama `gh-pages`.
 
 ## Licencia
