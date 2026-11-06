@@ -165,6 +165,23 @@ describe('pptx import', () => {
 		}
 	});
 
+	test('our own entrance animations are exact: no approximation warning', async () => {
+		const src = deck();
+		const s1 = src.slides[1];
+		const ids = s1.elements.map((e) => e.id);
+		s1.anims = [
+			{ id: 'a1', el: ids[0], effect: 'fade', dur: 500, trigger: 'click' },
+			{ id: 'a2', el: ids[1], effect: 'fly', dir: 'd', dur: 500, trigger: 'with' },
+			{ id: 'a3', el: ids[0], effect: 'wipe', dir: 'l', dur: 500, trigger: 'after' },
+			{ id: 'a4', el: ids[1], effect: 'zoom', dur: 500, trigger: 'click' },
+			{ id: 'a5', el: ids[0], effect: 'appear', dur: 0, trigger: 'click' }
+		];
+		const bytes = await writePptx(src, async () => ({ data: PNG, extension: 'png' }));
+		const { content, animsApprox } = await readPptx(bytes, { putBlob: store().putBlob });
+		expect(animsApprox).toBe(false);
+		expect(content.slides[1].anims?.map((a) => a.effect)).toEqual(['fade', 'fly', 'wipe', 'zoom', 'appear']);
+	});
+
 	test('round trip of our own export keeps the content', async () => {
 		const src = deck();
 		const bytes = await writePptx(src, async () => ({ data: PNG, extension: 'png' }), { lang: 'es' });

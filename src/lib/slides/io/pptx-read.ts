@@ -926,9 +926,12 @@ function readTransition(xml: string): Transition | undefined {
 	return { type, dir: type === 'push' || type === 'wipe' || type === 'cover' ? (FROM[dirAttr ?? 'l'] ?? 'r') : undefined, dur: Math.max(100, ms) };
 }
 
-function readTiming(xml: string, bySrc: Map<number, string>): { raw?: string; anims: Anim[] } {
+// approx = the raw timing has something our model can't represent exactly (non-entrance effects,
+// presets mapped to a neighbour, missing targets).
+function readTiming(xml: string, bySrc: Map<number, string>): { raw?: string; anims: Anim[]; approx: boolean } {
 	const m = /<p:timing>[\s\S]*<\/p:timing>/.exec(xml);
-	if (!m) return { anims: [] };
+	if (!m) return { anims: [], approx: false };
+	let approx = /presetClass="(exit|emph|path)"/.test(m[0]);
 	const raw = m[0];
 	const t = parse(raw);
 	const main = findDeep(t, (n) => n.tag === 'cTn' && n.attrs.nodeType === 'mainSeq');
@@ -942,8 +945,12 @@ function readTiming(xml: string, bySrc: Map<number, string>): { raw?: string; an
 				if (!ctn || ctn.attrs.presetClass !== 'entr') continue;
 				const spid = Number(findDeep(ep, (n) => n.tag === 'spTgt')?.attrs.spid);
 				const el = bySrc.get(spid);
-				if (!el) continue;
+				if (!el) {
+					approx = true;
+					continue;
+				}
 				const preset = Number(ctn.attrs.presetID);
+				if (![1, 2, 10, 22, 53].includes(preset)) approx = true;
 				const sub = Number(ctn.attrs.presetSubtype);
 				const DIR: Record<number, 'l' | 'r' | 'u' | 'd'> = { 4: 'd', 1: 'u', 8: 'l', 2: 'r' };
 				const effect: AnimEffect = preset === 1 ? 'appear' : preset === 2 || preset === 3 || preset === 12 || preset === 7 ? 'fly' : preset === 22 ? 'wipe' : preset === 53 || preset === 23 || preset === 55 ? 'zoom' : 'fade';
@@ -959,7 +966,7 @@ function readTiming(xml: string, bySrc: Map<number, string>): { raw?: string; an
 			}
 		}
 	}
-	return { raw, anims };
+	return { raw, anims, approx };
 }
 
 function findDeep(n: N | undefined, f: (n: N) => boolean): N | undefined {
@@ -1089,8 +1096,8 @@ export async function readPptx(bytes: Uint8Array, opts: ReadOptions): Promise<Re
 		const xml = pkg.str(path);
 		const bySrc = new Map<number, string>();
 		for (const e of elements) if (e.srcId) bySrc.set(e.srcId, e.id);
-		const { raw, anims } = readTiming(xml, bySrc);
-		if (raw && (anims.length || /presetClass="(exit|emph|path)"/.test(raw))) animsApprox = true;
+		const { raw, anims, approx } = readTiming(xml, bySrc);
+		if (approx) animsApprox = true;
 		const lay = layout?.attrs.type;
 		const hasBody = elements.some((e) => e.kind === 'shape' && (e.ph === 'body' || e.ph === 'body2'));
 		const slide: Slide = {
