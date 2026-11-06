@@ -505,7 +505,7 @@
 
 <AppHeader />
 
-<main class="mx-auto max-w-6xl px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))]">
+<main class="mx-auto max-w-6xl px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))]">
 	<section class="mb-4 flex flex-wrap items-center gap-2">
 		<Menu label={t().library.newFile} triggerClass="btn btn-primary gap-1.5">
 			{#snippet icon()}<Icon name="plus" size={18} />{/snippet}
@@ -557,6 +557,7 @@
 				</button>
 			{/each}
 		</div>
+		{#if tab === 'trash' && trashCount}<button class="btn btn-ghost text-bad" onclick={clearTrash}><Icon name="trash" size={16} />{t().library.emptyTrash}</button>{/if}
 		<label class="relative ml-auto flex min-w-0 flex-1 items-center sm:max-w-64">
 			<Icon name="search" size={16} class="pointer-events-none absolute left-2.5 text-faint" />
 			<input class="input w-full pl-8" type="search" placeholder={t().library.searchPlaceholder} bind:value={query} aria-label={t().common.search} />
@@ -574,25 +575,6 @@
 			</button>
 		{/if}
 	</div>
-
-	{#if selected.size}
-		<div class="mb-3 flex flex-wrap items-center gap-1 rounded-lg border border-line bg-surface-2/60 px-2 py-1 text-sm">
-			<button class="tb" title={t().library.clearSelection} aria-label={t().library.clearSelection} onclick={() => selected.clear()}><Icon name="x" size={16} /></button>
-			<span class="mr-auto px-1">{t().library.selected(selected.size)}</span>
-			{#if tab === 'trash'}
-				<button class="btn btn-ghost" onclick={() => restore(selItems)}><Icon name="restore" size={16} />{t().library.restore}</button>
-				<button class="btn btn-ghost text-bad" onclick={() => destroy(selItems)}><Icon name="trash" size={16} />{t().library.deleteForever}</button>
-			{:else}
-				<button class="btn btn-ghost" onclick={() => (moving = split(selItems))}><Icon name="move" size={16} /><span class="hidden sm:inline">{t().library.moveTo}</span></button>
-				{#if selItems.some((i) => i.type === 'file')}<button class="btn btn-ghost" onclick={() => duplicate(selItems)}><Icon name="copy" size={16} /><span class="hidden sm:inline">{t().common.duplicate}</span></button>{/if}
-				<button class="btn btn-ghost text-bad" onclick={() => trash(selItems)}><Icon name="trash" size={16} /><span class="hidden sm:inline">{t().library.moveToTrash}</span></button>
-			{/if}
-		</div>
-	{:else if tab === 'trash' && trashCount}
-		<div class="mb-3 flex justify-end">
-			<button class="btn btn-ghost text-bad" onclick={clearTrash}><Icon name="trash" size={16} />{t().library.emptyTrash}</button>
-		</div>
-	{/if}
 
 	<!-- Keyboard lives on the listbox; this layer only catches background clicks and right clicks. -->
 	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
@@ -691,6 +673,22 @@
 		{/if}
 	</div>
 </main>
+
+{#if selected.size}
+	<!-- Floating, so selecting never shifts the list (a double click must land on the same item). -->
+	<div class="fixed inset-x-0 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 mx-auto flex w-max max-w-[calc(100%-2rem)] flex-wrap items-center gap-1 rounded-xl border border-line bg-surface px-2 py-1 text-sm shadow-xl" role="toolbar" aria-label={t().library.selected(selected.size)}>
+		<button class="tb" title={t().library.clearSelection} aria-label={t().library.clearSelection} onclick={() => selected.clear()}><Icon name="x" size={16} /></button>
+		<span class="mr-2 px-1 whitespace-nowrap">{t().library.selected(selected.size)}</span>
+		{#if tab === 'trash'}
+			<button class="btn btn-ghost" onclick={() => restore(selItems)}><Icon name="restore" size={16} />{t().library.restore}</button>
+			<button class="btn btn-ghost text-bad" onclick={() => destroy(selItems)}><Icon name="trash" size={16} />{t().library.deleteForever}</button>
+		{:else}
+			<button class="btn btn-ghost" onclick={() => (moving = split(selItems))}><Icon name="move" size={16} /><span class="hidden sm:inline">{t().library.moveTo}</span></button>
+			{#if selItems.some((i) => i.type === 'file')}<button class="btn btn-ghost" onclick={() => duplicate(selItems)}><Icon name="copy" size={16} /><span class="hidden sm:inline">{t().common.duplicate}</span></button>{/if}
+			<button class="btn btn-ghost text-bad" onclick={() => trash(selItems)}><Icon name="trash" size={16} /><span class="hidden sm:inline">{t().library.moveToTrash}</span></button>
+		{/if}
+	</div>
+{/if}
 
 <ContextMenu at={menu?.at ?? null} onclose={() => (menu = null)} label={t().common.more}>
 	{#snippet children(close)}
