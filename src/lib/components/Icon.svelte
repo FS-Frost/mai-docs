@@ -99,7 +99,12 @@
 		sparkle: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z',
 		animation: 'M5 12a7 7 0 0 1 7-7 M12 19a7 7 0 0 0 7-7 M9 12a3 3 0 1 0 6 0 3 3 0 0 0-6 0z',
 		transition: 'M3 5h8v14H3z M13 5h8v14h-8z M9 12h6 M13 10l2 2-2 2',
-		play: 'M7 4l13 8-13 8V4z'
+		play: 'M7 4l13 8-13 8V4z',
+		folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+		folderPlus: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M12 10v6 M9 13h6',
+		move: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 13h6 M13 10.5l2.5 2.5-2.5 2.5',
+		viewList: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01',
+		viewGrid: 'M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z'
 	} as const;
 	export type IconName = keyof typeof ICONS;
 </script>

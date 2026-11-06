@@ -1,16 +1,21 @@
 // Whole-library backup as .zip: manifest.json + contents/<id>.json + blobs/<blobId>. Import always creates new ids.
+// v2 adds the folder tree (manifest.folders + FileMeta.folderId); v1 backups import into the root.
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { BLOB_PREFIX } from '../storage/blobs.ts';
-import { db, uid, type FileMeta } from '../storage/db.ts';
-import { createFile } from '../storage/library.ts';
+import { db, uid, type FileMeta, type Folder } from '../storage/db.ts';
+import { createFile, notifyLibrary } from '../storage/library.ts';
+import { fileVisible, folderMap, folderVisible, parentOf, parentsFirst } from '../storage/tree.ts';
 
 const FORMAT = 'mai-docs-backup';
 
-type Manifest = { format: typeof FORMAT; v: 1; exportedAt: number; files: FileMeta[]; blobs: { id: string; docId: string; type: string }[] };
+type Manifest = { format: typeof FORMAT; v: 1 | 2; exportedAt: number; files: FileMeta[]; folders?: Folder[]; blobs: { id: string; docId: string; type: string }[] };
 
 export async function exportLibrary(): Promise<Blob> {
 	const d = await db();
-	const files = (await d.getAll('files')).filter((f) => !f.trashedAt);
+	const allFolders = await d.getAll('folders');
+	const map = folderMap(allFolders);
+	const folders = allFolders.filter((f) => folderVisible(map, f));
+	const files = (await d.getAll('files')).filter((f) => fileVisible(map, f)).map((f) => ({ ...f, folderId: parentOf(map, f.folderId) }));
 	const entries: Record<string, Uint8Array> = {};
 	const blobs: Manifest['blobs'] = [];
 	for (const f of files) {
@@ -20,7 +25,7 @@ export async function exportLibrary(): Promise<Blob> {
 			blobs.push({ id: b.id, docId: b.docId, type: b.type });
 		}
 	}
-	const manifest: Manifest = { format: FORMAT, v: 1, exportedAt: Date.now(), files, blobs };
+	const manifest: Manifest = { format: FORMAT, v: 2, exportedAt: Date.now(), files, folders, blobs };
 	entries['manifest.json'] = strToU8(JSON.stringify(manifest));
 	return new Blob([zipSync(entries, { level: 6 }) as BlobPart], { type: 'application/zip' });
 }
@@ -33,6 +38,14 @@ export async function importLibrary(file: Blob): Promise<number> {
 	const m = JSON.parse(strFromU8(raw)) as Manifest;
 	if (m.format !== FORMAT) throw new Error('invalid');
 	const d = await db();
+	// Folders first, parents before children, with new ids.
+	const ids = new Map<string, string>();
+	for (const f of parentsFirst(m.folders ?? [])) {
+		const id = uid();
+		ids.set(f.id, id);
+		await d.put('folders', { id, name: f.name, parentId: f.parentId ? ids.get(f.parentId) : undefined, createdAt: f.createdAt, updatedAt: f.updatedAt });
+	}
+	if (ids.size) notifyLibrary();
 	let n = 0;
 	for (const f of m.files) {
 		const data = z[`contents/${f.id}.json`];
@@ -46,7 +59,7 @@ export async function importLibrary(file: Blob): Promise<number> {
 			await d.put('blobs', { id: nb, docId: newId, blob: new Blob([bytes as BlobPart], { type: b.type }), type: b.type });
 			json = json.split(b.id).join(nb);
 		}
-		await createFile(f.kind, f.title, JSON.parse(json), { createdAt: f.createdAt, updatedAt: f.updatedAt, size: f.size }, newId);
+		await createFile(f.kind, f.title, JSON.parse(json), { createdAt: f.createdAt, updatedAt: f.updatedAt, size: f.size, folderId: f.folderId ? ids.get(f.folderId) : undefined }, newId);
 		n++;
 	}
 	return n;

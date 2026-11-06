@@ -22,10 +22,11 @@ export const isSupported = (name: string) => ACCEPT_ALL.includes(ext(name));
 
 export type OpenResult = { meta: FileMeta; warnings: string[] };
 
-export async function importFile(file: File, handle?: FileSystemFileHandle): Promise<OpenResult> {
+export async function importFile(file: File, handle?: FileSystemFileHandle, folderId?: string): Promise<OpenResult> {
 	const e = ext(file.name);
 	const title = stem(file.name);
 	const origin = { name: file.name, type: file.type };
+	const extra = { origin, folderId };
 	const warnings: string[] = [];
 	const locale = i18n.locale;
 	let meta: FileMeta;
@@ -35,7 +36,7 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 		const id = uid();
 		const { json, lossy } = await docFromFile(file, e, id);
 		if (lossy) warnings.push(t().doc.importLossy);
-		meta = await createFile('doc', title, newDocContent(locale, json), { origin }, id);
+		meta = await createFile('doc', title, newDocContent(locale, json), extra, id);
 		// Only .docx can be written back as-is (others would lose formatting on Ctrl+S).
 		if (handle && e === '.docx') await setHandle(meta.id, handle);
 	} else if (ACCEPT.sheet.includes(e)) {
@@ -53,7 +54,7 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 			wb.active = s.id;
 			content = toContent(wb);
 		}
-		meta = await createFile('sheet', title, content, { origin }, id);
+		meta = await createFile('sheet', title, content, extra, id);
 		if (handle && e === '.xlsx') await setHandle(meta.id, handle);
 	} else if (ACCEPT.slides.includes(e)) {
 		const id = uid();
@@ -64,7 +65,7 @@ export async function importFile(file: File, handle?: FileSystemFileHandle): Pro
 		if (res.lossy) warnings.push(t().slides.importLossy);
 		if (res.fontsReplaced.length) warnings.push(t().slides.fontsReplaced(res.fontsReplaced.join(', ')));
 		if (res.animsApprox) warnings.push(t().slides.importedAnims);
-		meta = await createFile('slides', title, res.content, { origin }, id);
+		meta = await createFile('slides', title, res.content, extra, id);
 		if (handle) await setHandle(meta.id, handle);
 	} else throw new Error(t().library.unsupported(file.name));
 	return { meta, warnings };
@@ -105,6 +106,7 @@ export async function pickFiles(): Promise<{ file: File; handle?: FileSystemFile
 			const handles = await window.showOpenFilePicker({
 				multiple: true,
 				types: [
+					{ description: t().library.allSupported, accept: { 'application/octet-stream': ACCEPT_ALL } },
 					{ description: t().kind.doc, accept: { 'application/octet-stream': ACCEPT.doc } },
 					{ description: t().kind.sheet, accept: { 'application/octet-stream': ACCEPT.sheet } },
 					{ description: t().kind.slides, accept: { 'application/octet-stream': ACCEPT.slides } }

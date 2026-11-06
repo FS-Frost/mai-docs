@@ -22,8 +22,17 @@
 		initTheme();
 		initI18n();
 		void registerServiceWorker();
-		const offline = () => toast.info(t().net.offline, { detail: t().net.offlineDetail, key: 'net' });
-		const online = () => toast.dismissKey('net');
+		// "Back online" only after an offline notice in this session, never on load.
+		let wasOffline = false;
+		const offline = () => {
+			wasOffline = true;
+			toast.info(t().net.offline, { detail: t().net.offlineDetail, key: 'net' });
+		};
+		const online = () => {
+			toast.dismissKey('net');
+			if (wasOffline) toast.success(t().net.online, { key: 'net' });
+			wasOffline = false;
+		};
 		addEventListener('offline', offline);
 		addEventListener('online', online);
 		// Opened from the OS ("Open with Mai Docs", manifest file_handlers, Chromium).

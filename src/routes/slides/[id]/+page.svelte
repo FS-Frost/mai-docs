@@ -45,6 +45,8 @@
 	let canvas = $state<ReturnType<typeof Canvas>>();
 	let motionOpen = $state(false);
 	let iconOpen = $state(false);
+	/** Icon element being replaced from the canvas menu (null = insert a new one). */
+	let iconReplace = $state<string | null>(null);
 	let fromSheetOpen = $state(false);
 	let chartEdit = $state<string | null>(null);
 
@@ -190,7 +192,13 @@
 	function addIcon(name: string, nodes: IconNode) {
 		iconOpen = false;
 		if (!deck) return;
-		const el: IconEl = { id: uid(), kind: 'icon', icon: name, nodes: nodes.map(([tag, attrs]) => [tag, Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, String(v)]))]), color: 'accent1', stroke: 2, ...centered(120, 120), w: 120, h: 120, rot: 0 };
+		const copy = nodes.map(([tag, attrs]) => [tag, Object.fromEntries(Object.entries(attrs).map(([k, v]) => [k, String(v)]))]) as IconEl['nodes'];
+		if (iconReplace) {
+			deck.patch([iconReplace], { icon: name, nodes: copy } as Partial<IconEl>);
+			iconReplace = null;
+			return;
+		}
+		const el: IconEl = { id: uid(), kind: 'icon', icon: name, nodes: copy, color: 'accent1', stroke: 2, ...centered(120, 120), w: 120, h: 120, rot: 0 };
 		deck.add(el);
 	}
 
@@ -258,7 +266,11 @@
 			<div class="flex min-h-0 flex-1">
 				<div class="hidden md:flex"><Thumbs {deck} {readonly} /></div>
 				<div class="flex min-w-0 flex-1 flex-col">
-					<div class="min-h-0 flex-1"><Canvas bind:this={canvas} {deck} fileId={id} {readonly} oneditchart={(el) => ((chartEdit = el.id), (motionOpen = false))} /></div>
+					<div class="min-h-0 flex-1"><Canvas bind:this={canvas} {deck} fileId={id} {readonly} oneditchart={(el) => ((chartEdit = el.id), (motionOpen = false))}
+							onmotion={() => ((motionOpen = true), (chartEdit = null))}
+							ontheme={() => (themeOpen = true)}
+							onreplaceicon={(elId) => ((iconReplace = elId), (iconOpen = true))}
+						/></div>
 					<div class="flex items-center gap-2 border-t border-line bg-surface px-2 py-1 md:hidden">
 						<button class="tb" aria-label={t().slides.previous} onclick={() => deck?.go(deck.current - 1)}><Icon name="chevronLeft" /></button>
 						<span class="text-sm tabular-nums">{deck.current + 1} / {deck.content.slides.length}</span>
@@ -295,7 +307,7 @@
 {/if}
 
 {#if iconOpen}
-	<IconPicker onpick={addIcon} onclose={() => (iconOpen = false)} />
+	<IconPicker onpick={addIcon} onclose={() => ((iconOpen = false), (iconReplace = null))} />
 {/if}
 
 {#if fromSheetOpen}

@@ -4,6 +4,7 @@
 	import type { Editor } from '@tiptap/core';
 	import EditorHeader from '#lib/components/EditorHeader.svelte';
 	import DocToolbar from '#lib/components/docs/DocToolbar.svelte';
+	import DocMenu from '#lib/components/docs/DocMenu.svelte';
 	import FindBar from '#lib/components/docs/FindBar.svelte';
 	import PageSetupDialog from '#lib/components/docs/PageSetup.svelte';
 	import DocChartPanel from '#lib/components/docs/DocChartPanel.svelte';
@@ -33,6 +34,7 @@
 	let editor = $state.raw<Editor | null>(null);
 	let ver = $state(0);
 	let host = $state<HTMLDivElement>();
+	let docMenu = $state<ReturnType<typeof DocMenu>>();
 	let lock: FileLock | null = null;
 	let readonly = $state(false);
 	let findOpen = $state(false);
@@ -281,9 +283,17 @@
 					? `width:100%;min-height:70vh;padding:16px;zoom:1`
 					: `width:${dims.w}mm;min-height:${dims.h}mm;padding:${pageSetup?.margins.top ?? 25}mm ${pageSetup?.margins.right ?? 25}mm ${pageSetup?.margins.bottom ?? 25}mm ${pageSetup?.margins.left ?? 25}mm;zoom:${zoom / 100}`}
 			>
-				<div bind:this={host} class="h-full min-h-[50mm]" onclick={(e) => e.target === e.currentTarget && editor?.commands.focus('end')} role="presentation"></div>
+				<div
+					bind:this={host}
+					class="h-full min-h-[50mm]"
+					onclick={(e) => e.target === e.currentTarget && editor?.commands.focus('end')}
+					oncontextmenu={(e) => docMenu?.open(e)}
+					onkeydown={(e) => docMenu?.keydown(e)}
+					role="presentation"
+				></div>
 			</div>
 		</div>
+		{#if editor}<DocMenu bind:this={docMenu} {editor} docId={id} {readonly} />{/if}
 		{#if chartEdit && editor}
 			<DocChartPanel attrs={chartEdit.attrs} onchange={updateChart} onclose={() => ((chartEdit = null), editor?.commands.focus())} ondelete={deleteChart} />
 		{/if}

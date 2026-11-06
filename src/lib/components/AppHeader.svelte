@@ -4,6 +4,7 @@
 	import { t } from '../i18n/index.svelte.ts';
 	import Icon from './Icon.svelte';
 	import Logo from './Logo.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
 
 	const path = $derived(routePath(page.url.pathname));
 	const links = $derived([
@@ -26,6 +27,7 @@
 					<span class="hidden sm:inline">{l.label}</span>
 				</a>
 			{/each}
+			<ThemeToggle />
 		</nav>
 	</div>
 </header>

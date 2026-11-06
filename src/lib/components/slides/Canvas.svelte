@@ -14,8 +14,26 @@
 	import { t } from '../../i18n/index.svelte.ts';
 	import SlideView from './SlideView.svelte';
 	import TextEditorBox from './TextEditorBox.svelte';
+	import CanvasMenu from './CanvasMenu.svelte';
+	import type { MenuAt } from '../ContextMenu.svelte';
 
-	let { deck, fileId, readonly = false, oneditchart }: { deck: Deck; fileId: string; readonly?: boolean; oneditchart?: (el: ChartEl) => void } = $props();
+	let {
+		deck,
+		fileId,
+		readonly = false,
+		oneditchart,
+		onmotion,
+		ontheme,
+		onreplaceicon
+	}: {
+		deck: Deck;
+		fileId: string;
+		readonly?: boolean;
+		oneditchart?: (el: ChartEl) => void;
+		onmotion?: () => void;
+		ontheme?: () => void;
+		onreplaceicon?: (id: string) => void;
+	} = $props();
 
 	let host = $state<HTMLDivElement>();
 	let box = $state({ w: 800, h: 450 });
@@ -293,20 +311,39 @@
 		}
 	}
 
+	/** Last elements copied in this app (the context menu pastes them when the system clipboard can't be read). */
+	let copied = '';
+
 	function onCopy(e: ClipboardEvent, cut = false) {
 		if (deck.editing || !deck.selection.length) return;
 		e.preventDefault();
-		e.clipboardData?.setData('text/plain', MARK + JSON.stringify($state.snapshot(deck.selected)));
+		copied = MARK + JSON.stringify($state.snapshot(deck.selected));
+		e.clipboardData?.setData('text/plain', copied);
 		if (cut && !readonly) deck.removeSelected();
 	}
 
-	async function onPaste(e: ClipboardEvent) {
-		if (deck.editing || readonly) return;
-		const text = e.clipboardData?.getData('text/plain') ?? '';
-		const all = [...(e.clipboardData?.files ?? [])];
-		const files = all.filter((f) => f.type.startsWith('image/'));
-		const media = all.filter(isMedia);
-		e.preventDefault();
+	/** Copy/cut from the context menu (no ClipboardEvent): system clipboard when allowed + the in-app copy. */
+	function menuCopy(cut = false) {
+		if (!deck.selection.length) return;
+		copied = MARK + JSON.stringify($state.snapshot(deck.selected));
+		void navigator.clipboard?.writeText(copied).catch(() => {});
+		if (cut && !readonly) deck.removeSelected();
+	}
+
+	async function menuPaste() {
+		if (readonly) return;
+		let text = '';
+		try {
+			text = (await navigator.clipboard?.readText()) ?? '';
+		} catch {
+			text = '';
+		}
+		if (!text) text = copied;
+		if (!text) return toast.info(t().ctx.pasteDenied);
+		pasteText(text);
+	}
+
+	function pasteText(text: string) {
 		if (text.startsWith(MARK)) {
 			try {
 				const els = (JSON.parse(text.slice(MARK.length)) as El[]).map((el) => ({ ...el, id: uid(), ph: undefined, x: el.x + 16, y: el.y + 16 }) as El);
@@ -316,15 +353,71 @@
 			}
 			return;
 		}
+		if (text.trim()) deck.add(textBox(Math.round(size.w * 0.2), Math.round(size.h * 0.4), Math.round(size.w * 0.6), 80, text));
+	}
+
+	// ---------- Context menu ----------
+
+	let menuAt = $state<MenuAt | null>(null);
+
+	/** Right click / long press: select what is under the pointer (and the table cell), then open the menu. */
+	function onContext(e: MouseEvent) {
+		// While typing in a box the browser menu stays (spelling, input methods).
+		if ((e.target as HTMLElement).closest('[contenteditable="true"]')) return;
+		if (!surface) return;
+		e.preventDefault();
+		if (deck.editing) deck.stopEditing();
+		const p = toLogical(e);
+		const el = [...slide.elements].reverse().find((x) => !x.locked && p.x >= x.x && p.x <= x.x + x.w && p.y >= x.y && p.y <= x.y + Math.max(x.h, 8));
+		if (!el) {
+			deck.selection = [];
+			deck.cellSel = null;
+		} else {
+			if (!deck.selection.includes(el.id)) {
+				deck.selection = [el.id];
+				deck.cellSel = null;
+			}
+			if (el.kind === 'table' && deck.selection.length === 1) {
+				const hit = cellAt(el, p.x - el.x, p.y - el.y);
+				const g = deck.cellSel;
+				if (hit && !(g && hit.r >= g.r1 && hit.r <= g.r2 && hit.c >= g.c1 && hit.c <= g.c2)) deck.cellSel = { r1: hit.r, c1: hit.c, r2: hit.r, c2: hit.c };
+			}
+		}
+		host?.focus({ preventScroll: true });
+		menuAt = { x: e.clientX, y: e.clientY };
+	}
+
+	const menuActions = {
+		cut: () => menuCopy(true),
+		copy: () => menuCopy(),
+		paste: () => void menuPaste(),
+		editText: () => deck.selected[0] && deck.startEditing(deck.selected[0].id),
+		editCell: () => {
+			const el = deck.selected[0];
+			if (el?.kind === 'table') startCell(el.id, deck.cellSel?.r1 ?? 0, deck.cellSel?.c1 ?? 0);
+		},
+		editChart: () => {
+			const el = deck.selected[0];
+			if (el?.kind === 'chart') oneditchart?.(el);
+		},
+		motion: () => onmotion?.(),
+		theme: () => ontheme?.(),
+		replaceIcon: () => deck.selected[0] && onreplaceicon?.(deck.selected[0].id)
+	};
+
+	async function onPaste(e: ClipboardEvent) {
+		if (deck.editing || readonly) return;
+		const text = e.clipboardData?.getData('text/plain') ?? '';
+		const all = [...(e.clipboardData?.files ?? [])];
+		const files = all.filter((f) => f.type.startsWith('image/'));
+		const media = all.filter(isMedia);
+		e.preventDefault();
 		if ((files.length || media.length) && !text) {
 			if (files.length) await insertImageFiles(files);
 			if (media.length) await insertMediaFiles(media);
 			return;
 		}
-		if (text.trim()) {
-			const el: ShapeEl = textBox(Math.round(size.w * 0.2), Math.round(size.h * 0.4), Math.round(size.w * 0.6), 80, text);
-			deck.add(el);
-		}
+		pasteText(text);
 	}
 
 	function textBox(x: number, y: number, w: number, h: number, text = ''): ShapeEl {
@@ -406,6 +499,7 @@
 	onpaste={onPaste}
 	ondragover={(e) => e.dataTransfer?.types.includes('Files') && e.preventDefault()}
 	ondrop={onDrop}
+	oncontextmenu={onContext}
 >
 	<div class="shadow-[0_1px_3px_rgb(0_0_0/0.2),0_6px_24px_rgb(0_0_0/0.12)]">
 		<SlideView content={deck.content} {slide} {scale} placeholders hideTextOf={deck.editing} hideCell={deck.editingCell}>
@@ -475,3 +569,5 @@
 		</SlideView>
 	</div>
 </div>
+
+<CanvasMenu {deck} at={menuAt} {readonly} onclose={() => (menuAt = null)} actions={menuActions} />

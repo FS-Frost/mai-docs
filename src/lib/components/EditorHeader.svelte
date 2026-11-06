@@ -5,6 +5,7 @@
 	import { t } from '../i18n/index.svelte.ts';
 	import type { SaveStatus } from '../storage/autosave.svelte.ts';
 	import Icon from './Icon.svelte';
+	import ThemeToggle from './ThemeToggle.svelte';
 
 	let {
 		title,
@@ -71,6 +72,7 @@
 		<div class="ml-auto flex items-center gap-0.5">
 			{#if menus}{@render menus()}{/if}
 			{#if actions}{@render actions()}{/if}
+			<ThemeToggle />
 		</div>
 	</div>
 </header>

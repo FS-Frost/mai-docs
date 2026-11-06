@@ -22,6 +22,7 @@
 		"@tailwindcss/vite": "^4.3.4",
 		"@types/bun": "^1.4.4",
 		"@types/papaparse": "^5.5.2",
+		"fake-indexeddb": "6.0.0",
 		"svelte": "^5.57.2",
 		"svelte-check": "^4.7.7",
 		"tailwindcss": "^4.3.4",
