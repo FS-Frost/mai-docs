@@ -20,10 +20,10 @@
 	import { Deck } from '#lib/slides/deck.svelte.ts';
 	import type { SlidesContent } from '#lib/slides/model.ts';
 	import { writePptx, type LoadImage } from '#lib/slides/io/pptx-write.ts';
-	import { officeImage } from '#lib/files/images.ts';
+	import { loadBlobBytes, loadOfficeImage, renderIconPng } from '#lib/files/office.ts';
 	import { fileName, saveAs, writeHandle } from '#lib/files/save.ts';
 	import { createAutosave } from '#lib/storage/autosave.svelte.ts';
-	import { getBlob, pruneBlobs } from '#lib/storage/blobs.ts';
+	import { pruneBlobs } from '#lib/storage/blobs.ts';
 	import { getHandle, setHandle } from '#lib/storage/handles.ts';
 	import { acquireFileLock, type FileLock } from '#lib/storage/locks.ts';
 	import { getContent, getMeta, renameFile, saveContent, type FileMeta } from '#lib/storage/library.ts';
@@ -83,28 +83,9 @@
 		meta = (await renameFile(id, title)) ?? meta;
 	}
 
-	const loadImage: LoadImage = async (blobId) => {
-		const b = await getBlob(blobId);
-		return b ? officeImage(b) : null;
-	};
-	const loadBlob = async (blobId: string) => {
-		const b = await getBlob(blobId);
-		return b ? new Uint8Array(await b.arrayBuffer()) : null;
-	};
-	/** Icon PNG for the .pptx (PowerPoint before 2016 ignores the SVG), drawn at 2× the box. */
-	const renderIcon = (el: IconEl, svg: string) =>
-		new Promise<Uint8Array | null>((resolve) => {
-			const img = new Image();
-			img.onload = () => {
-				const c = document.createElement('canvas');
-				c.width = Math.max(1, Math.round(el.w * 2));
-				c.height = Math.max(1, Math.round(el.h * 2));
-				c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height);
-				c.toBlob(async (b) => resolve(b ? new Uint8Array(await b.arrayBuffer()) : null), 'image/png');
-			};
-			img.onerror = () => resolve(null);
-			img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-		});
+	const loadImage: LoadImage = loadOfficeImage;
+	const loadBlob = loadBlobBytes;
+	const renderIcon = renderIconPng;
 	const pptxBlob = async () => new Blob([(await writePptx(deck!.content, loadImage, { title: meta?.title, lang: i18n.locale, loadBlob, renderIcon })) as BlobPart], { type: PPTX_MIME });
 
 	async function exportPptx() {

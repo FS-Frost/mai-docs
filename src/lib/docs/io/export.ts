@@ -36,7 +36,7 @@ async function chartPng(a: Record<string, unknown>) {
 	return { blob, width: attrs.width, height: attrs.height };
 }
 
-const chartImage: ChartLoader = async (a) => {
+export const chartImage: ChartLoader = async (a) => {
 	const { blob, width, height } = await chartPng(a);
 	return { data: new Uint8Array(await blob.arrayBuffer()), type: 'png', width, height };
 };

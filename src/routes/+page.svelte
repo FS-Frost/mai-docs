@@ -305,6 +305,24 @@
 		if (await confirmDialog(t().library.confirmEmptyTrash(trashCount), { danger: true, confirm: t().library.emptyTrash })) await emptyTrash();
 	}
 
+	/** One file as-is, one folder as "<folder>.zip", several items as "<open folder>.zip" (Office formats). */
+	async function downloadSel(items: Item[]) {
+		if (!items.length) return;
+		toast.info(t().library.preparingDownload, { key: 'download', duration: null });
+		try {
+			const { downloadItems } = await import('#lib/files/download.ts');
+			const res = await downloadItems(split(items), current ? (map.get(current)?.name ?? t().library.title) : t().library.title);
+			toast.dismissKey('download');
+			if (!res) return;
+			if (res.failed.length) toast.warn(t().library.downloadSkipped(res.failed.join(', ')));
+			toast.success(t().file.downloaded(res.name));
+		} catch (e) {
+			console.error(e);
+			toast.dismissKey('download');
+			toast.error(t().library.downloadFailed, { detail: String((e as Error)?.message ?? e) });
+		}
+	}
+
 	async function moveTo(items: { files: string[]; folders: string[] }, target: string | undefined) {
 		const n = await moveItems(items, target);
 		if (n) toast.success(t().library.moved(n, target ? (map.get(target)?.name ?? '') : t().library.title));
@@ -683,6 +701,7 @@
 			<button class="btn btn-ghost" onclick={() => restore(selItems)}><Icon name="restore" size={16} />{t().library.restore}</button>
 			<button class="btn btn-ghost text-bad" onclick={() => destroy(selItems)}><Icon name="trash" size={16} />{t().library.deleteForever}</button>
 		{:else}
+			<button class="btn btn-ghost" title={t().library.download} onclick={() => downloadSel(selItems)}><Icon name="download" size={16} /><span class="hidden sm:inline">{t().library.download}</span></button>
 			<button class="btn btn-ghost" onclick={() => (moving = split(selItems))}><Icon name="move" size={16} /><span class="hidden sm:inline">{t().library.moveTo}</span></button>
 			{#if selItems.some((i) => i.type === 'file')}<button class="btn btn-ghost" onclick={() => duplicate(selItems)}><Icon name="copy" size={16} /><span class="hidden sm:inline">{t().common.duplicate}</span></button>{/if}
 			<button class="btn btn-ghost text-bad" onclick={() => trash(selItems)}><Icon name="trash" size={16} /><span class="hidden sm:inline">{t().library.moveToTrash}</span></button>
@@ -709,6 +728,7 @@
 				<button class="menu-item" disabled={!one} onclick={() => (close(), one && openFolder(one.type === 'folder' ? one.folder.id : parentOf(map, one.file.folderId)))}><Icon name="folder" size={16} />{one?.type === 'folder' ? t().library.openFolder : t().library.showInFolder}</button>
 			{/if}
 			<button class="menu-item" disabled={!one} onclick={() => (close(), one && rename(one))}><Icon name="rename" size={16} />{t().common.rename}</button>
+			<button class="menu-item" onclick={() => (close(), downloadSel(menuItems))}><Icon name="download" size={16} />{t().library.download}</button>
 			<button class="menu-item" onclick={() => (close(), (moving = split(menuItems)))}><Icon name="move" size={16} />{t().library.moveTo}</button>
 			<button class="menu-item" disabled={!menuItems.some((i) => i.type === 'file')} onclick={() => (close(), duplicate(menuItems))}><Icon name="copy" size={16} />{t().common.duplicate}</button>
 			<div class="my-1 border-t border-line"></div>

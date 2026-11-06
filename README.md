@@ -14,6 +14,7 @@ Lightweight **documents**, **spreadsheets** and **presentations** editors that r
   - selección múltiple, arrastrar para mover, "Mover a…", menú con clic derecho y atajos de teclado;
   - búsqueda en toda la biblioteca y papelera (una carpeta va y vuelve entera);
   - botón "Nuevo archivo" para documento, hoja, presentación o carpeta;
+  - descarga en formato de Office (.docx, .xlsx, .pptx): un archivo suelto, una carpeta como `.zip` con su nombre, o varios elementos en un `.zip`;
   - copia de seguridad en `.zip` que conserva las carpetas. En Chromium también abre y guarda archivos del disco (Ctrl+S escribe sobre el `.docx`/`.xlsx`/`.pptx` original).
 - Menú con clic derecho (o pulsación larga) en documentos y presentaciones, con las acciones del elemento: tabla, imagen, gráfico, texto. En documentos, Ctrl+clic derecho abre el menú del navegador con la corrección ortográfica.
 - Interfaz en español o inglés según el idioma del sistema, con selector manual. Tema claro, oscuro o del sistema, que se cambia con un botón en la barra superior.

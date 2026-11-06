@@ -16,12 +16,12 @@
 	import * as A from '#lib/sheets/actions.ts';
 	import { sheetToCSV } from '#lib/sheets/io/csv.ts';
 	import { writeXlsx, type LoadImage } from '#lib/sheets/io/xlsx.ts';
-	import { officeImage } from '#lib/files/images.ts';
+	import { loadOfficeImage } from '#lib/files/office.ts';
 	import type { CellImage, WorkbookContent } from '#lib/sheets/model.ts';
 	import { promptDialog } from '#lib/client/dialogs.svelte.ts';
 	import { t } from '#lib/i18n/index.svelte.ts';
 	import { createAutosave } from '#lib/storage/autosave.svelte.ts';
-	import { getBlob, pruneBlobs } from '#lib/storage/blobs.ts';
+	import { pruneBlobs } from '#lib/storage/blobs.ts';
 	import { getHandle, setHandle } from '#lib/storage/handles.ts';
 	import { acquireFileLock, type FileLock } from '#lib/storage/locks.ts';
 	import { getContent, getMeta, renameFile, saveContent, type FileMeta } from '#lib/storage/library.ts';
@@ -47,10 +47,7 @@
 		return o?.kind === 'chart' ? { ...o } : null;
 	});
 
-	const loadImage: LoadImage = async (blobId) => {
-		const b = await getBlob(blobId);
-		return b ? officeImage(b) : null;
-	};
+	const loadImage: LoadImage = loadOfficeImage;
 	const xlsxBytes = (v: SheetView) => writeXlsx(v.book.wb, loadImage, (s, r, c) => v.book.text(s, r, c));
 
 	const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
