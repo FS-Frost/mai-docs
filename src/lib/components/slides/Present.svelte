@@ -4,14 +4,15 @@
 	// "Next" plays the slide's entrance animations step by step before moving on (with the slide transition).
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { animSteps, hiddenAt, stepTimeline, type Anim, type Slide, type SlidesContent, type Transition } from '../../slides/model.ts';
-	import { advance, nextVisible, presentChannel, type PresentMsg, type Screen } from '../../slides/present.ts';
+	import { advance, nextVisible, openPresenterWindow, presentChannel, type PresentMsg, type Screen } from '../../slides/present.ts';
 	import { withBase } from '../../client/base.ts';
 	import { toast } from '../../client/toast.svelte.ts';
 	import { t } from '../../i18n/index.svelte.ts';
 	import Icon from '../Icon.svelte';
 	import SlideView from './SlideView.svelte';
 
-	let { content, fileId, start, onexit }: { content: SlidesContent; fileId: string; start: number; onexit: (index: number) => void } = $props();
+	// windowed = present in the tab without fullscreen (presenter view on the same screen, or a second window).
+	let { content, fileId, start, onexit, windowed = false }: { content: SlidesContent; fileId: string; start: number; onexit: (index: number) => void; windowed?: boolean } = $props();
 
 	let root = $state<HTMLDivElement>();
 	let index = $state(0);
@@ -31,6 +32,10 @@
 	let trKey = $state(0);
 	let trTimer: ReturnType<typeof setTimeout> | undefined;
 	const ch = presentChannel(untrack(() => fileId));
+	let isFs = $state(false);
+	/** Leaving fullscreen ends the show (Esc is taken by the browser), unless a presenter window is in use: opening
+	 * a pop-up makes the browser leave fullscreen, and the show must go on in the tab. */
+	let keepWindowed = untrack(() => windowed);
 
 	const scale = $derived(Math.min(vw / content.size.w, vh / content.size.h));
 	const slide = $derived(content.slides[index]);
@@ -39,7 +44,7 @@
 	const H = $derived(content.size.h * scale);
 
 	function post() {
-		ch?.postMessage({ type: 'state', index, step, screen, running: true } satisfies PresentMsg);
+		ch?.postMessage({ type: 'state', index, step, screen, running: true, ended } satisfies PresentMsg);
 	}
 
 	function show(i: number, s: number, animate: boolean, dir: 1 | -1 = 1) {
@@ -75,7 +80,7 @@
 		if (!p) {
 			if (dir === 1) {
 				ended = true;
-				ch?.postMessage({ type: 'state', index, step, screen, running: true } satisfies PresentMsg);
+				post();
 			}
 			return;
 		}
@@ -128,8 +133,14 @@
 	}
 
 	function openPresenter() {
-		const w = window.open(withBase(`/slides/${fileId}/presenter`), `mai-presenter-${fileId}`, 'width=1100,height=720');
-		if (!w) toast.warn(t().slides.popupBlocked);
+		keepWindowed = true;
+		if (!openPresenterWindow(withBase(`/slides/${fileId}/presenter`), fileId)) toast.warn(t().slides.popupBlocked);
+	}
+
+	function toggleFullscreen() {
+		if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+		else void root?.requestFullscreen?.().catch(() => {});
+		root?.focus();
 	}
 
 	let touch: { x: number; y: number } | null = null;
@@ -142,9 +153,11 @@
 
 	onMount(() => {
 		index = content.slides[start]?.hidden ? (nextVisible(content.slides, start, 1) ?? start) : start;
-		void root?.requestFullscreen?.().catch(() => {});
+		if (!windowed) void root?.requestFullscreen?.().catch(() => {});
 		const onFs = () => {
-			if (!document.fullscreenElement) exit();
+			isFs = !!document.fullscreenElement;
+			if (!isFs && !keepWindowed) exit();
+			else root?.focus();
 		};
 		document.addEventListener('fullscreenchange', onFs);
 		const onResize = () => {
@@ -255,6 +268,7 @@
 		<button class="rounded-full p-1.5 hover:bg-white/15" aria-label={t().slides.next} title={t().slides.next} onclick={() => move(1)}><Icon name="chevronRight" /></button>
 		<button class="rounded-full p-1.5 hover:bg-white/15 {laser ? 'text-red-400' : ''}" aria-label={t().slides.laser} title={t().slides.laser} onclick={() => (laser = !laser)}><Icon name="laser" /></button>
 		<button class="rounded-full p-1.5 hover:bg-white/15" aria-label={t().slides.presenterView} title={t().slides.presenterView} onclick={openPresenter}><Icon name="monitor" /></button>
+		<button class="rounded-full p-1.5 hover:bg-white/15" aria-label={isFs ? t().slides.exitFullscreen : t().slides.fullscreen} title={isFs ? t().slides.exitFullscreen : t().slides.fullscreen} onclick={toggleFullscreen}><Icon name="fullscreen" /></button>
 		<button class="rounded-full p-1.5 hover:bg-white/15" aria-label={t().slides.exit} title={t().slides.exit} onclick={exit}><Icon name="x" /></button>
 	</div>
 </div>

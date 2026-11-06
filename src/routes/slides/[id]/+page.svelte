@@ -30,6 +30,7 @@
 	import { i18n, t } from '#lib/i18n/index.svelte.ts';
 	import { toast } from '#lib/client/toast.svelte.ts';
 	import { withBase } from '#lib/client/base.ts';
+	import { openPresenterWindow } from '#lib/slides/present.ts';
 
 	const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 	const id = $derived(kitPage.params.id ?? '');
@@ -42,6 +43,8 @@
 	let handleName = $state<string | null>(null);
 	let themeOpen = $state(false);
 	let presenting = $state<number | null>(null);
+	/** Present in the tab (no fullscreen) next to the presenter window. */
+	let presentWindowed = $state(false);
 	let canvas = $state<ReturnType<typeof Canvas>>();
 	let motionOpen = $state(false);
 	let iconOpen = $state(false);
@@ -170,6 +173,14 @@
 		if (edit) chartEdit = el.id;
 	}
 
+	/** Google-Slides-like: the presenter window opens (inside this click) and the show runs in this tab, windowed. */
+	function presentWithPresenter() {
+		if (!deck) return;
+		if (!openPresenterWindow(withBase(`/slides/${id}/presenter`), id)) toast.warn(t().slides.popupBlocked);
+		presentWindowed = true;
+		presenting = deck.current;
+	}
+
 	function addIcon(name: string, nodes: IconNode) {
 		iconOpen = false;
 		if (!deck) return;
@@ -199,6 +210,7 @@
 			void save();
 		} else if (e.key === 'F5' || (mod && e.key === 'Enter')) {
 			e.preventDefault();
+			presentWindowed = false;
 			presenting = e.shiftKey || mod ? (deck?.current ?? 0) : 0;
 		} else if (mod && e.key.toLowerCase() === 'p') {
 			e.preventDefault();
@@ -231,12 +243,13 @@
 						<button class="menu-item" onclick={() => (close(), exportPptx())}><Icon name="download" size={16} />{t().slides.fmtPptx}</button>
 						<button class="menu-item" onclick={() => (close(), printPdf())}><Icon name="print" size={16} />{t().slides.fmtPdf}</button>
 						<div class="my-1 border-t border-line"></div>
-						<button class="menu-item" onclick={() => (close(), (presenting = 0))}><Icon name="present" size={16} />{t().slides.presentFromStart}<span class="ml-auto text-xs text-faint">F5</span></button>
+						<button class="menu-item" onclick={() => (close(), (presentWindowed = false), (presenting = 0))}><Icon name="present" size={16} />{t().slides.presentFromStart}<span class="ml-auto text-xs text-faint">F5</span></button>
+						<button class="menu-item" onclick={() => (close(), presentWithPresenter())}><Icon name="monitor" size={16} />{t().slides.presentWithPresenter}</button>
 					{/snippet}
 				</Menu>
 			{/snippet}
 			{#snippet actions()}
-				<button class="btn btn-primary ml-1 !py-1" disabled={!deck} onclick={() => (presenting = deck?.current ?? 0)}><Icon name="present" size={16} /><span class="hidden sm:inline">{t().slides.present}</span></button>
+				<button class="btn btn-primary ml-1 !py-1" disabled={!deck} onclick={() => ((presentWindowed = false), (presenting = deck?.current ?? 0))}><Icon name="present" size={16} /><span class="hidden sm:inline">{t().slides.present}</span></button>
 			{/snippet}
 		</EditorHeader>
 		{#if deck}
@@ -300,7 +313,7 @@
 {/if}
 
 {#if presenting !== null && deck}
-	<Present content={deck.content} fileId={id} start={presenting} onexit={(i) => ((presenting = null), deck?.go(i))} />
+	<Present content={deck.content} fileId={id} start={presenting} windowed={presentWindowed} onexit={(i) => ((presenting = null), deck?.go(i))} />
 {/if}
 
 {#if printing && deck}

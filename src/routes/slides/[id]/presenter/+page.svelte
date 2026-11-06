@@ -4,7 +4,7 @@
 	import { page } from '$app/state';
 	import SlideView from '#lib/components/slides/SlideView.svelte';
 	import Icon from '#lib/components/Icon.svelte';
-	import type { SlidesContent } from '#lib/slides/model.ts';
+	import { hiddenAt, type SlidesContent } from '#lib/slides/model.ts';
 	import { formatClock, nextVisible, presentChannel, type PresentMsg, type Screen } from '#lib/slides/present.ts';
 	import { getContent, getMeta } from '#lib/storage/library.ts';
 	import { t } from '#lib/i18n/index.svelte.ts';
@@ -13,6 +13,7 @@
 	let content = $state.raw<SlidesContent | null>(null);
 	let title = $state('');
 	let index = $state(0);
+	let step = $state(0);
 	let screen = $state<Screen>('normal');
 	let ended = $state(false);
 	let startedAt = $state(Date.now());
@@ -37,8 +38,9 @@
 				const d = m.data;
 				if (d.type === 'state') {
 					index = d.index;
+					step = d.step ?? 0;
 					screen = d.screen;
-					ended = false;
+					ended = !!d.ended;
 				} else if (d.type === 'end') ended = true;
 			};
 			ch.postMessage({ type: 'hello' } satisfies PresentMsg);
@@ -52,6 +54,8 @@
 
 	const send = (m: PresentMsg) => ch?.postMessage(m);
 	const next = $derived(content ? nextVisible(content.slides, index, 1) : null);
+	/** Elements still waiting for their entrance animation on the current slide (as the audience sees it). */
+	const hiddenIds = $derived(content?.slides[index] ? hiddenAt(content.slides[index], step) : null);
 	const bigScale = $derived(content ? Math.min((vw * 0.58) / content.size.w, 0.75) : 0.5);
 	const smallScale = $derived(content ? Math.min((vw * 0.32) / content.size.w, 0.45) : 0.3);
 
@@ -80,7 +84,7 @@
 			<section class="flex flex-col gap-2">
 				<div class="text-sm text-white/60">{ended ? t().slides.end : t().slides.slideOf(index + 1, content.slides.length)}</div>
 				<div class="overflow-hidden rounded ring-2 ring-[#7d97ff]">
-					<SlideView {content} slide={content.slides[index]} scale={bigScale} />
+					<SlideView {content} slide={content.slides[index]} scale={bigScale} {hiddenIds} />
 				</div>
 				<div class="flex gap-2">
 					<button class="flex items-center gap-1 rounded border border-white/20 px-3 py-1.5 hover:bg-white/10" onclick={() => send({ type: 'step', dir: -1 })}><Icon name="chevronLeft" />{t().slides.previous}</button>

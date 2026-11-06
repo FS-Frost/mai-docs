@@ -2,12 +2,19 @@
 
 export type Screen = 'normal' | 'black' | 'white';
 export type PresentMsg =
-	| { type: 'state'; index: number; step?: number; screen: Screen; running: boolean }
+	| { type: 'state'; index: number; step?: number; screen: Screen; running: boolean; ended?: boolean }
 	| { type: 'goto'; index: number }
 	| { type: 'step'; dir: 1 | -1 }
 	| { type: 'screen'; screen: Screen }
 	| { type: 'hello' }
 	| { type: 'end' };
+
+/** Opens (or focuses) the presenter window. Must run inside a user gesture; false = blocked by the browser. */
+export function openPresenterWindow(url: string, fileId: string) {
+	const w = window.open(url, `mai-presenter-${fileId}`, 'width=1100,height=720');
+	w?.focus();
+	return !!w;
+}
 
 export const presentChannel = (fileId: string) => (typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`mai-present-${fileId}`));
 
